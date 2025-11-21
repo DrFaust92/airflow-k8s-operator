@@ -29,4 +29,4 @@ The operator supports the following authentication methods:
 
 ## License
 
-[License information to be added]
+Licensed under the Apache License, Version 2.0.
