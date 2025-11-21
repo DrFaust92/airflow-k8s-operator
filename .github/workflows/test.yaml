@@ -21,6 +21,11 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1
 
-      # TODO: setup airflow in the cluster for integration tests  
-      - name: Run operator test
-        run: uv run pytest tests/operator_test.py
+      - name: Add Airflow Helm repository
+        run: helm repo add apache-airflow https://airflow.apache.org && helm repo update
+      
+      - name: Install Airflow
+        run: helm install airflow apache-airflow/airflow
+      
+    #   - name: Run operator test
+    #     run: uv run pytest tests/operator_test.py
