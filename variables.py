@@ -6,7 +6,7 @@ from config import api_client
 variables_api = VariableApi(api_client=api_client)
 @kopf.on.create('airflow.drfaust92', 'v1beta1', 'variables')
 def create_variable(meta, spec, namespace, logger, body, **kwargs):
-    var_name = spec.get('name')
+    var_name = meta.get('name')
     var_value = spec.get('value')
     var_description = spec.get('description', '')
 
@@ -25,7 +25,7 @@ def create_variable(meta, spec, namespace, logger, body, **kwargs):
     
 @kopf.on.delete('airflow.drfaust92', 'v1beta1', 'variables')
 def delete_variable(meta, spec, namespace, logger, body, **kwargs):
-    var_name = spec.get('name')
+    var_name = meta.get('name')
 
     logger.info(f"Deleting Airflow Variable: {var_name}")
     try:
@@ -39,7 +39,7 @@ def delete_variable(meta, spec, namespace, logger, body, **kwargs):
     
 @kopf.on.update('airflow.drfaust92', 'v1beta1', 'variables')
 def update_variable(meta, spec, namespace, logger, body, **kwargs):
-    var_name = spec.get('name')
+    var_name = meta.get('name')
     var_value = spec.get('value')
     var_description = spec.get('description', '')
 
