@@ -16,7 +16,7 @@ if not AIRFLOW_HOST.endswith('/api/v1'):
 		AIRFLOW_HOST = AIRFLOW_HOST + 'api/v1'
 	else:
 		AIRFLOW_HOST = AIRFLOW_HOST + '/api/v1'
-	logger.info(f"Appending '/api/v1' to AIRFLOW_HOST. Using: {AIRFLOW_HOST}")
+	logger.debug(f"Appending '/api/v1' to AIRFLOW_HOST. Using: {AIRFLOW_HOST}")
 
 AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME")
 AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD")

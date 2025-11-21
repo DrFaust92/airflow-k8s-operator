@@ -30,7 +30,7 @@ jobs:
             --set postgresql.image.repository=bitnamilegacy/postgresql \
             --set postgresql.image.tag=16.1.0-debian-11-r15 \
             --set executor=KubernetesExecutor \
-            --set workers.replicas=0 \
+            --set workers.replicas=1 \
             --set redis.enabled=false \
             --set triggerer.enabled=false \
             --set statsd.enabled=false \
