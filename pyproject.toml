@@ -9,3 +9,8 @@ dependencies = [
     "kopf>=1.38.0",
     "google-auth[requests]>=2.43.0",
 ]
+
+[dependency-groups]
+test = [
+    "pytest>=8.0.0",
+]
