@@ -26,18 +26,19 @@ jobs:
       
       - name: Install Airflow
         run: |
-          helm install airflow apache-airflow/airflow \
+          helm install airflow apache-airflow/airflow --version 1.16.0 \
+            --set postgresql.image.repository=bitnamilegacy/postgresql \
+            --set postgresql.image.tag=16.1.0-debian-11-r15 \
             --set executor=KubernetesExecutor \
             --set workers.replicas=0 \
-            --set flower.enabled=false \
             --set redis.enabled=false \
-            --set postgresql.enabled=true \
-            --set webserver.replicas=1 \
-            --set scheduler.replicas=1 \
             --set triggerer.enabled=false \
             --set statsd.enabled=false \
-            --set pgbouncer.enabled=false \
-            --timeout 10m \
+            --set createUserJob.useHelmHooks=false \
+            --set createUserJob.applyCustomEnv=false \
+            --set migrateDatabaseJob.useHelmHooks=false \
+            --set migrateDatabaseJob.applyCustomEnv=false \
+            --timeout 3m \
             --wait
 
     #   - name: install test dependencies
