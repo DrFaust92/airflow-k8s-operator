@@ -1,10 +1,27 @@
-# name: test
+name: test
 
-# on: pull_request
+on: pull_request
 
-# jobs:
-#   create-cluster:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Create k8s Kind Cluster
-#         uses: helm/kind-action@v1      
+jobs:
+  create-cluster:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      
+      - name: Install dependencies
+        run: uv sync
+      
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+      
+      - name: Run operator test
+        run: uv run pytest tests/operator_test.py
