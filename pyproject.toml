@@ -1,0 +1,10 @@
+[project]
+name = "airflow-operator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apache-airflow-client==2.10.0",
+    "kopf>=1.38.0",
+]

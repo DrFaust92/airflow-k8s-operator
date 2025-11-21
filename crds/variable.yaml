@@ -1,0 +1,31 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: variables.airflow.drfaust92
+spec:
+  scope: Namespaced
+  group: airflow.drfaust92
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                value:
+                  type: string
+                  description: The variable value.
+                description:
+                  type: string
+                  description: The variable description.
+  names:
+    kind: Variable
+    plural: variables
+    singular: variable
+    shortNames:
+      - vars
+      - var
