@@ -4,7 +4,7 @@ metadata:
   name: example-connection
   # namespace: default
 spec:
-  connType: "s3"
+  connType: "generic"
   description: "Example Airflow Connection that stores an S3 connection."
   host: "example-bucket"
   login: "user"
