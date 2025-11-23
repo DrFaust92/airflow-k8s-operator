@@ -7,16 +7,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 AIRFLOW_HOST = os.getenv("AIRFLOW_HOST")
+AIRFLOW_API_BASE_URL = os.getenv("AIRFLOW_API_BASE_URL", "/api/v1") # for airflow api v1 compatibility, airflow v2.
 if not AIRFLOW_HOST:
 	raise RuntimeError("Environment variable AIRFLOW_HOST must be set")
 
 # Ensure AIRFLOW_HOST includes /api/v1 for the apache-airflow-client
-if not AIRFLOW_HOST.endswith('/api/v1'):
-	if AIRFLOW_HOST.endswith('/'):
-		AIRFLOW_HOST = AIRFLOW_HOST + 'api/v1'
-	else:
-		AIRFLOW_HOST = AIRFLOW_HOST + '/api/v1'
-	logger.debug(f"Appending '/api/v1' to AIRFLOW_HOST. Using: {AIRFLOW_HOST}")
+if not AIRFLOW_HOST.endswith(AIRFLOW_API_BASE_URL):
+	AIRFLOW_HOST = AIRFLOW_HOST.rstrip('/') + AIRFLOW_API_BASE_URL
+	logger.debug(f"Appending AIRFLOW_API_BASE_URL to AIRFLOW_HOST. Using: {AIRFLOW_HOST}")
 
 AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME")
 AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD")

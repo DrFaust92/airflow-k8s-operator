@@ -36,3 +36,5 @@ crds/
 *.pem
 *.key
 *.crt
+tests/
+.gitignore

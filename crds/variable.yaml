@@ -22,6 +22,8 @@ spec:
           properties:
             spec:
               type: object
+              required:
+                - value
               properties:
                 value:
                   type: string

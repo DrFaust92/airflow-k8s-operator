@@ -1,0 +1,14 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Connection
+metadata:
+  name: example-connection
+  # namespace: default
+spec:
+  connType: "generic"
+  description: "Example Airflow Connection that stores an S3 connection."
+  host: "example-bucket"
+  login: "user"
+  password: "password"
+  port: 443
+  schema: "https"
+  extra: "{}"

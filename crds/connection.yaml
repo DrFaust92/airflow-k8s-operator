@@ -1,0 +1,51 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: connections.airflow.drfaust92
+spec:
+  group: airflow.drfaust92
+  scope: Namespaced
+  names:
+    kind: Connection
+    plural: connections
+    singular: connection
+    shortNames:
+      - conns
+      - conn
+  versions:
+    - name: v1beta1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - connType
+              properties:
+                connType:
+                  type: string
+                  description: The connection type.
+                description:
+                  type: string
+                  description: The connection description.
+                host:
+                  type: string
+                  description: The connection host.
+                login:
+                  type: string
+                  description: The connection login.
+                password: # this field is sensitive and api wont return it in GET requests
+                  type: string
+                  description: The connection password.
+                port:
+                  type: integer
+                  description: The connection port.
+                schema:
+                  type: string
+                  description: The connection schema.
+                extra:
+                  type: string
+                  description: The connection extra field.
