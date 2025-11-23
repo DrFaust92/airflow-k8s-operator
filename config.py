@@ -2,6 +2,9 @@ import os
 import airflow_client.client as client
 import google.auth
 import google.auth.transport.requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 AIRFLOW_HOST = os.getenv("AIRFLOW_HOST")
 if not AIRFLOW_HOST:
@@ -13,15 +16,15 @@ if not AIRFLOW_HOST.endswith('/api/v1'):
 		AIRFLOW_HOST = AIRFLOW_HOST + 'api/v1'
 	else:
 		AIRFLOW_HOST = AIRFLOW_HOST + '/api/v1'
-	print(f"Info: Appending '/api/v1' to AIRFLOW_HOST. Using: {AIRFLOW_HOST}")
+	logger.debug(f"Appending '/api/v1' to AIRFLOW_HOST. Using: {AIRFLOW_HOST}")
 
 AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME")
 AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD")
 
 # Check if we should use Google Cloud authentication (for Cloud Composer)
-USE_GOOGLE_AUTH = os.getenv("USE_GOOGLE_AUTH", "true").lower() == "true"
+USE_GOOGLE_AUTH = os.getenv("USE_GOOGLE_AUTH")
 
-if USE_GOOGLE_AUTH:
+if USE_GOOGLE_AUTH is not None and USE_GOOGLE_AUTH.lower() in ['true']:
 	# Authenticate using Application Default Credentials for Google Cloud Composer
 	credentials, project = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
 	auth_req = google.auth.transport.requests.Request()

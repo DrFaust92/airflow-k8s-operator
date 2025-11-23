@@ -1,0 +1,8 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Variable
+metadata:
+  name: example-variable
+  # namespace: default
+spec:
+  value: "s3://example-bucket/data/path2"
+  description: "Updated Example Airflow Variable that stores an S3 path."
