@@ -118,7 +118,7 @@ This deploys the necessary resources to your local kind cluster for testing.
 1. Deploy the Custom Resource Definitions (CRDs):
 
 ```bash
-kubectl apply -f crds/
+kubectl apply -f chart/airflow-k8s-operator/templates/crds/
 ```
 
 This applies the Airflow Variable and Connection CRDs to your cluster, enabling you to manage Airflow resources using Kubernetes custom resources.

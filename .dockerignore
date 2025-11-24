@@ -32,7 +32,7 @@ yarn-debug.log*
 yarn-error.log*
 Dockerfile
 docker-compose*.yml
-crds/
+helm/
 *.pem
 *.key
 *.crt
