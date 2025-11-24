@@ -7,8 +7,6 @@ on:
     paths:
       - 'chart/airflow-k8s-operator/**'
 
-permissions: read-all
-
 jobs:
   release:
     runs-on: ubuntu-latest
