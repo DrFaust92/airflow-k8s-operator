@@ -3,6 +3,7 @@ import airflow_client.client as client
 from airflow_client.client.api.variable_api import VariableApi
 from airflow_client.client.model.variable import Variable
 
+
 # This is a sanity test to see that everything is wired up correctly.
 def test_create_variable():
     # Set up configuration
@@ -11,16 +12,14 @@ def test_create_variable():
     airflow_password = os.getenv("AIRFLOW_PASSWORD", "admin")
 
     # Ensure AIRFLOW_HOST includes /api/v1
-    if not airflow_host.endswith('/api/v1'):
-        if airflow_host.endswith('/'):
-            airflow_host = airflow_host + 'api/v1'
+    if not airflow_host.endswith("/api/v1"):
+        if airflow_host.endswith("/"):
+            airflow_host = airflow_host + "api/v1"
         else:
-            airflow_host = airflow_host + '/api/v1'
+            airflow_host = airflow_host + "/api/v1"
 
     configuration = client.Configuration(
-        host=airflow_host,
-        username=airflow_username,
-        password=airflow_password
+        host=airflow_host, username=airflow_username, password=airflow_password
     )
 
     # Create API client
@@ -30,10 +29,7 @@ def test_create_variable():
     variable_api = VariableApi(api_client)
 
     # Create a test variable
-    test_variable = Variable(
-        key="test_variable",
-        value="test_value"
-    )
+    test_variable = Variable(key="test_variable", value="test_value")
 
     try:
         # Create the variable
@@ -51,6 +47,7 @@ def test_create_variable():
     except Exception as e:
         print(f"Error: {e}")
         raise
+
 
 if __name__ == "__main__":
     test_create_variable()
