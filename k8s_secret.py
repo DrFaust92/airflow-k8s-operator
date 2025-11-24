@@ -1,6 +1,5 @@
-import kopf
 import logging
-from kubernetes import client, config
+from kubernetes import client
 from collections.abc import Mapping
 
 def _get_secret_value(secret_name: str, secret_key: str, namespace: str, logger=None) -> str:

@@ -1,44 +1,54 @@
-# Default values for airflow-k8s-operator.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
-
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
+  # -- (string) the repository of the image
   repository: ghcr.io/drfaust92/airflow-k8s-operator
+  # -- (string) the image pull policy
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
+  # -- (string) the image tag (overrides chart appVersion)
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+# -- (list) image pull secrets for private registries
 imagePullSecrets: []
 # This is to override the chart name.
+# -- (string) short chart name override
 nameOverride: ""
+# -- (string) full chart name override
 fullnameOverride: ""
 
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
 serviceAccount:
+  # -- (bool) whether to create a service account
   # Specifies whether a service account should be created.
   create: true
+  # -- (bool) whether to automount the service account token
   # Automatically mount a ServiceAccount's API credentials?
   automount: true
+  # -- (map) annotations to add to the service account
   # Annotations to add to the service account.
   annotations: {}
+  # -- (string) service account name (optional)
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template.
   name: ""
 
 # This is for setting Kubernetes Annotations to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+# -- (map) annotations to add to the pod
 podAnnotations: {}
 # This is for setting Kubernetes Labels to a Pod.
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+# -- (map) labels to add to the pod
 podLabels: {}
 
+# -- (map) pod-level security context
 podSecurityContext:
   {}
   # fsGroup: 2000
 
+# -- (map) container security context
 securityContext:
   {}
   # capabilities:
@@ -49,6 +59,7 @@ securityContext:
   # runAsUser: 1000
 
 resources:
+  # -- (map) resource requests and limits
   {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little
@@ -61,18 +72,15 @@ resources:
   #   cpu: 100m
   #   memory: 128Mi
 
-# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
-# livenessProbe:
-#   httpGet:
-#     path: /
-#     port: http
-# readinessProbe:
-#   httpGet:
-#     path: /
-#     port: http
+# -- (map) liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
 
 # Additional volumes on the output Deployment definition.
 volumes:
+  # -- (list) additional volumes to add to the pod
   []
   # - name: foo
   #   secret:
@@ -81,13 +89,50 @@ volumes:
 
 # Additional volumeMounts on the output Deployment definition.
 volumeMounts:
+  # -- (list) additional volumeMounts for the container
   []
   # - name: foo
   #   mountPath: "/etc/foo"
   #   readOnly: true
 
+## Container environment variables
+## - Provide a list of environment variables to set in the container.
+## - Each item should be a mapping with `name` and either `value` or a valueFrom reference.
+## - Example items are shown below.
+# -- (list) environment variables for the container (name/value entries)
+env:
+  []
+  # - name: ENV_VAR_NAME
+  #   value: "env_var_value"
+
+## Environment variables from a ConfigMap or Secret
+## - Use `envFrom` to populate environment variables from a `configMapRef` or `secretRef`.
+## - Each entry should be a map with either `configMapRef` or `secretRef` pointing to an existing resource.
+# -- (list) envFrom sources (configMapRef or secretRef)
+envFrom:
+  []
+  # - configMapRef:
+  #     name: my-config-map
+  # - secretRef:
+  #     name: my-secret
+
+## -- (map) node selector constraints
 nodeSelector: {}
 
+## -- (list) Kubernetes tolerations for the pod
 tolerations: []
 
+## -- (map) affinity rules for pod scheduling
 affinity: {}
+
+port: 8080
+
+operator:
+  # -- (string) log level for the operator
+  logLevel: "INFO"
+
+  # -- (string) log format for the operator
+  logFormat: "json"
+
+  # -- (string) liveness probe address for the operator
+  livenessProbeAddress: "http://0.0.0.0:{{ .Values.port }}/healthz"
