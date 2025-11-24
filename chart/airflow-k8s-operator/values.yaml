@@ -99,8 +99,18 @@ volumeMounts:
 # -- (list) environment variables for the container (name/value entries)
 env:
   []
-  # - name: ENV_VAR_NAME
-  #   value: "env_var_value"
+  # - name: AIRFLOW_HOST
+  #   value: "http://airflow-webserver:8080"
+  # - name: AIRFLOW_USERNAME
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: airflow-credentials
+  #       key: username
+  # - name: AIRFLOW_PASSWORD
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: airflow-credentials
+  #       key: password
 
 ## Environment variables from a ConfigMap or Secret
 ## - Use `envFrom` to populate environment variables from a `configMapRef` or `secretRef`.

@@ -13,7 +13,6 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 
 - Airflow pools
 - Support for AWS managed Airflow
-- Support for fetching sensitive values from Kubernetes secrets
 
 ## Compatibility
 
@@ -163,11 +162,34 @@ kind delete cluster
 
 ## Installation
 
-[Installation instructions to be added]
+Install the operator from an OCI registry.
 
-## Usage
+```bash
+# install or upgrade the operator from an OCI chart reference
+helm upgrade --install airflow-operator oci://ghcr.io/drfaust92/airflow-operator --namespace airflow-operator --create-namespace
+```
 
-[Usage examples to be added]
+## Project Architecture
+
+This operator is a small Kubernetes controller whose responsibility is to reconcile custom resources representing Airflow objects (currently Variables and Connections) with a target Airflow instance. The project follows a simple, modular layout:
+
+- `chart/`: Helm chart and CRD manifests used to install the operator and its CustomResourceDefinitions into a cluster.
+- `main.py`: Entrypoint for the operator process (wires controller startup and watches).
+- `config/`: Authentication and environment helpers used to configure the Airflow API client and any cloud auth logic.
+- `client.py`: Lightweight HTTP client that talks to the Airflow REST API (handles base URL normalization, token acquisition, and retries).
+- `resources/`: Mapping code that translates Kubernetes custom resource fields into the payloads expected by the Airflow API for Variables and Connections.
+- `tests/`: Example CRs and unit tests used during development and for local validation.
+
+The controller is implemented as a reconciliation loop: it watches the Variable and Connection CRDs and attempts to make the Airflow state match the declared Kubernetes resource state. Changes detected in the cluster trigger create/update/delete operations against the Airflow REST API.
+
+## Implementation Details
+
+- Reconciliation flow: on each event the controller validates the CR object, builds the corresponding Airflow API payload and calls the `client` functions to create or update the resource. When a CR is deleted the controller issues the corresponding delete operation to Airflow (if the resource exists).
+- Idempotency: operations are written to be idempotent where possible — the client checks for existence and compares remote state with desired state before performing updates.
+- Authentication: the operator supports multiple authentication methods. Google Cloud authentication is enabled via the `USE_GOOGLE_AUTH` environment variable and uses Application Default Credentials. Basic auth is supported through `AIRFLOW_USERNAME` and `AIRFLOW_PASSWORD`. The `config/` helpers centralize environment parsing and token handling.
+- Reconciliation interval: the frequency with which the operator reconciles resources with the Airflow instance is controlled by the `OPERATOR_RECONCILE_INTERVAL` environment variable. The default value is 300 seconds (5 minutes). You can adjust this variable to change how often the operator checks and updates Airflow resources.
+- Error handling: transient HTTP errors are retried; permanent errors are surfaced to the Kubernetes resource status so users can see reconciliation failures.
+- CRD design: the CRD YAML files under `chart/airflow-k8s-operator/templates/crds/` define the schema for `Variable` and `Connection` custom resources. Tests in `tests/` contain minimal example CRs that can be applied to a cluster for end-to-end verification.
 
 ## Contributing
 

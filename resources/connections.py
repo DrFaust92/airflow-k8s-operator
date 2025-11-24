@@ -3,6 +3,7 @@ from airflow_client.client.api.connection_api import ConnectionApi
 from airflow_client.client.model.connection import Connection
 from config.client import api_client
 from config.k8s_secret import resolve_value
+from config.base import OPERATOR_RECONCILE_INTERVAL
 
 connections_api = ConnectionApi(api_client=api_client)
 
@@ -65,6 +66,9 @@ def delete_connection(meta, spec, namespace, logger, body, **kwargs):
         return {"error": f"Failed to delete connection {connection_id}: {e}"}
 
 
+@kopf.on.timer(
+    "airflow.drfaust92", "v1beta1", "connections", interval=OPERATOR_RECONCILE_INTERVAL
+)
 @kopf.on.update("airflow.drfaust92", "v1beta1", "connections")
 def update_connection(meta, spec, namespace, logger, body, **kwargs):
     connection_id = meta.get("name")
