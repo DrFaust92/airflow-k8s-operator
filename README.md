@@ -8,11 +8,14 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
+- **Airflow Pools**: Management of Airflow pools
 
 ## Roadmap (TBD)
 
-- Airflow pools
 - Support for AWS managed Airflow
+- Support for Managing users/roles
+- telemetry and metrics
+- making things more async
 
 ## Compatibility
 

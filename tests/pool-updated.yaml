@@ -1,0 +1,9 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Pool
+metadata:
+  name: example-pool
+  # namespace: default
+spec:
+  slots: 4
+  includeDeferred: true
+  description: "Example Airflow Pool updated."

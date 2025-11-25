@@ -1,0 +1,8 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Pool
+metadata:
+  name: example-pool
+  # namespace: default
+spec:
+  slots: 5
+  description: "Example Airflow Pool."
