@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME")
 AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD")
+AIRFLOW_ACCESS_TOKEN = os.getenv("AIRFLOW_ACCESS_TOKEN")
 
 # Check if we should use Google Cloud authentication (for Cloud Composer)
 USE_GOOGLE_AUTH = os.getenv("USE_GOOGLE_AUTH")
@@ -18,6 +19,12 @@ if USE_GOOGLE_AUTH is not None and USE_GOOGLE_AUTH.lower() in ["true"]:
 elif AIRFLOW_USERNAME and AIRFLOW_PASSWORD:
     configuration = client.Configuration(
         host=AIRFLOW_HOST, username=AIRFLOW_USERNAME, password=AIRFLOW_PASSWORD
+    )
+    api_client = client.ApiClient(configuration=configuration)
+elif AIRFLOW_ACCESS_TOKEN:
+    configuration = client.Configuration(
+        host=AIRFLOW_HOST,
+        access_token=AIRFLOW_ACCESS_TOKEN,
     )
     api_client = client.ApiClient(configuration=configuration)
 else:
