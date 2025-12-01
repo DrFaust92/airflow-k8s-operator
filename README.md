@@ -59,6 +59,20 @@ export AIRFLOW_USERNAME=admin
 export AIRFLOW_PASSWORD=your_password
 ```
 
+### Access Token Authentication
+
+For Airflow instances that support token-based authentication.
+**Environment Variables:**
+
+- `AIRFLOW_ACCESS_TOKEN`: The access token for Airflow API authentication
+
+**Example:**
+
+```bash
+export AIRFLOW_HOST=http://airflow.example.com
+export AIRFLOW_ACCESS_TOKEN=your_access_token
+```
+
 ### Configuration
 
 **AIRFLOW_HOST**: Set the base URL of your Airflow instance. The operator will automatically append `/api/v1` if not already present. Trailing slashes are automatically stripped before appending the API endpoint.

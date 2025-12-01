@@ -29,5 +29,5 @@ elif AIRFLOW_ACCESS_TOKEN:
     api_client = client.ApiClient(configuration=configuration)
 else:
     raise RuntimeError(
-        "Either USE_GOOGLE_AUTH must be true (default) or AIRFLOW_USERNAME and AIRFLOW_PASSWORD must be set"
+        "Either USE_GOOGLE_AUTH must be true or (AIRFLOW_USERNAME and AIRFLOW_PASSWORD must be set) or AIRFLOW_ACCESS_TOKEN must be set"
     )
