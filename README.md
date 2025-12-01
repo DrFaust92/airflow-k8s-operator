@@ -19,7 +19,10 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 
 ## Compatibility
 
-Currently supports **Airflow v2** (tested on v2.10.0). Airflow v3 is not yet supported.
+Currently supports the following Airflow versions:
+
+- Airflow 2.0+ (using the Airflow v1 REST API) - tested on Airflow 2.10.0
+- Airflow 3.0+ (using the Airflow v2 REST API) - tested on Airflow 3.0.2
 
 ## Authentication
 
@@ -59,18 +62,42 @@ export AIRFLOW_USERNAME=admin
 export AIRFLOW_PASSWORD=your_password
 ```
 
-### Configuration
+### Access Token Authentication
 
-**AIRFLOW_HOST**: Set the base URL of your Airflow instance. The operator will automatically append `/api/v1` if not already present. Trailing slashes are automatically stripped before appending the API endpoint.
+For Airflow instances that support token-based authentication.
+**Environment Variables:**
 
-Example:
+- `AIRFLOW_ACCESS_TOKEN`: The access token for Airflow API authentication
+
+**Example:**
 
 ```bash
-AIRFLOW_HOST=http://airflow.example.com
-AIRFLOW_HOST=http://airflow.example.com/
+export AIRFLOW_HOST=http://airflow.example.com
+export AIRFLOW_ACCESS_TOKEN=your_access_token
 ```
 
-Both will result in: `http://airflow.example.com/api/v1`
+### Configuration
+
+**AIRFLOW_HOST**: Set the base URL of your Airflow instance. Trailing slashes are automatically stripped before appending the API endpoint.
+
+**AIRFLOW_API_BASE_URL**: Optional override for the Airflow API base path (defaults to `/api/v1`). If you're running Airflow 3 (which exposes the Airflow v2 REST API), set this to `/api/v2` so the operator targets the correct endpoints.
+
+Examples:
+
+```bash
+# default (Airflow 2.x): operator will call
+# http://airflow.example.com/api/v1
+AIRFLOW_HOST=http://airflow.example.com
+
+# explicitly strip trailing slash and use default API base
+AIRFLOW_HOST=http://airflow.example.com/
+
+# Airflow 3.x (use the v2 API)
+AIRFLOW_HOST=http://airflow.example.com
+AIRFLOW_API_BASE_URL=/api/v2
+```
+
+If `AIRFLOW_API_BASE_URL` is not provided the operator will append `/api/v1` by default.
 
 ## Testing Locally
 
