@@ -48,10 +48,22 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
+            - name: AIRFLOW_HOST
+              value: {{ tpl .Values.operator.airflowHost . | quote }}
             {{- if .Values.livenessProbe }}
             - name: LIVENESS_PROBE
               value: {{ tpl .Values.operator.livenessProbeAddress . | quote }}
             {{- end }}
+            - name: AIRFLOW_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.operator.basicAuthSecret.SecretName }}
+                  key: {{ .Values.operator.basicAuthSecret.UsernameKey }}
+            - name: AIRFLOW_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.operator.basicAuthSecret.SecretName }}
+                  key: {{ .Values.operator.basicAuthSecret.PasswordKey }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -14,7 +14,7 @@ rules:
     resources: [secrets]
     verbs: [get, list, watch]
   - apiGroups: [airflow.drfaust92]
-    resources: [variables, connections]
+    resources: [variables, connections,pools]
     verbs: [list, watch, get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

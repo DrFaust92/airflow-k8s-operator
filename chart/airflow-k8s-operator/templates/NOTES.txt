@@ -1,0 +1,1 @@
+{{ required "airflowHost is required" .Values.operator.airflowHost }}

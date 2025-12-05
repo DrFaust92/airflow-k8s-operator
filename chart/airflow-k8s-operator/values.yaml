@@ -135,5 +135,17 @@ affinity: {}
 port: 8080
 
 operator:
+  # -- (string) address for the operator
+  airflowHost: airflow-webserver.default.svc.cluster.local:8080
+  # -- (bool) set to true if using Composer
+  isComposer: false
+
+  basicAuthSecret:
+    # -- (bool) whether to create the basic auth secret
+    create: true
+    # -- (string) name of the basic auth secret
+    SecretName: "airflow-basic-auth"
+    UsernameKey: AIRFLOW_USERNAME
+    PasswordKey: AIRFLOW_PASSWORD
   # -- (string) liveness probe address for the operator
   livenessProbeAddress: "http://0.0.0.0:{{ .Values.port }}/healthz"
