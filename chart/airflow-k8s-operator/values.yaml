@@ -135,11 +135,5 @@ affinity: {}
 port: 8080
 
 operator:
-  # -- (string) log level for the operator
-  logLevel: "INFO"
-
-  # -- (string) log format for the operator
-  logFormat: "json"
-
   # -- (string) liveness probe address for the operator
   livenessProbeAddress: "http://0.0.0.0:{{ .Values.port }}/healthz"
