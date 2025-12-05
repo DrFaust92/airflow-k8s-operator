@@ -137,15 +137,15 @@ port: 8080
 operator:
   # -- (string) address for the operator
   airflowHost: ""
-  # -- (bool) set to true if using Composer
-  isComposer: false
 
   basicAuthSecret:
+    # -- (bool) whether to use basic auth secrets
+    enabled: false
     # -- (bool) whether to create the basic auth secret
     # If set to false, you must provide a Kubernetes secret with the name specified in `secretName`.
     # The secret must contain the keys specified in `usernameKey` and `passwordKey`.
     # If the secret or keys do not exist, the deployment will fail.
-    create: true
+    create: false
     # -- (string) name of the basic auth secret
     secretName: "airflow-basic-auth"
     # -- (string) key name for username in the secret

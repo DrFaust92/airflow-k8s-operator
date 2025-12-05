@@ -54,7 +54,7 @@ spec:
             - name: LIVENESS_PROBE
               value: {{ tpl .Values.operator.livenessProbeAddress . | quote }}
             {{- end }}
-            {{- if not .Values.operator.isComposer }}
+            {{- if .Values.operator.basicAuthSecret.enabled }}
             - name: AIRFLOW_USERNAME
               valueFrom:
                 secretKeyRef:
