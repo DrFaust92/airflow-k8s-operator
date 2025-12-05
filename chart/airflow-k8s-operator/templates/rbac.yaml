@@ -28,3 +28,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ include "airflow-k8s-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
