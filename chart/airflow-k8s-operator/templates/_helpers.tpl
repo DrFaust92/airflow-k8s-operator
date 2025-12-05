@@ -54,9 +54,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "airflow-k8s-operator.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
+{{- if not .Values.serviceAccount.name }}
 {{- default (include "airflow-k8s-operator.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
