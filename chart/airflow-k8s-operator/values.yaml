@@ -134,6 +134,17 @@ affinity: {}
 
 port: 8080
 
+
+podMonitor:
+  # -- (bool) create a PodMonitor for Prometheus Operator
+  enabled: false
+  # -- (map) additional labels for the PodMonitor
+  labels: {}
+  # -- (string) scrape interval for the PodMonitor
+  interval: "30s"
+  # -- (string) scrape timeout for the PodMonitor
+  timeout: "10s"
+
 operator:
   # -- (string) address for the operator
   airflowHost: ""
