@@ -55,7 +55,7 @@ Create the name of the service account to use
 */}}
 {{- define "airflow-k8s-operator.serviceAccountName" -}}
 {{- if not .Values.serviceAccount.name }}
-{{- default (include "airflow-k8s-operator.fullname" .) .Values.serviceAccount.name }}
+{{- include "airflow-k8s-operator.fullname" . }}
 {{- else }}
 {{- .Values.serviceAccount.name }}
 {{- end }}
