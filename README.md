@@ -196,7 +196,7 @@ Install the operator from an OCI registry.
 
 ```bash
 # install or upgrade the operator from an OCI chart reference
-helm upgrade --install airflow-operator oci://ghcr.io/drfaust92/airflow-operator --namespace airflow-operator --create-namespace
+helm upgrade --install airflow-operator oci://ghcr.io/drfaust92/charts/airflow-k8s-operator --namespace airflow-operator --create-namespace
 ```
 
 ## Project Architecture
