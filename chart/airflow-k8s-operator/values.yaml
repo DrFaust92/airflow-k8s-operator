@@ -72,7 +72,7 @@ resources:
 # -- (map) liveness probe configuration
 livenessProbe:
   httpGet:
-    path: /
+    path: "/healthz"
     port: http
 
 # Additional volumes on the output Deployment definition.
@@ -135,5 +135,22 @@ affinity: {}
 port: 8080
 
 operator:
+  # -- (string) address for the operator
+  airflowHost: ""
+
+  basicAuthSecret:
+    # -- (bool) whether to use basic auth secrets
+    enabled: false
+    # -- (bool) whether to create the basic auth secret
+    # If set to false, you must provide a Kubernetes secret with the name specified in `secretName`.
+    # The secret must contain the keys specified in `usernameKey` and `passwordKey`.
+    # If the secret or keys do not exist, the deployment will fail.
+    create: false
+    # -- (string) name of the basic auth secret
+    secretName: "airflow-basic-auth"
+    # -- (string) key name for username in the secret
+    usernameKey: AIRFLOW_USERNAME
+    # -- (string) key name for password in the secret
+    passwordKey: AIRFLOW_PASSWORD
   # -- (string) liveness probe address for the operator
   livenessProbeAddress: "http://0.0.0.0:{{ .Values.port }}/healthz"
