@@ -3,7 +3,7 @@ import google.auth
 import google.auth.transport.requests
 import logging
 from config.base import AIRFLOW_HOST
-from config.metrics import AUTH_REFRESH, AUTH_FAILURES
+from config.metrics import AUTH_FAILURES
 
 logger = logging.getLogger(__name__)
 
