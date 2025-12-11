@@ -1,10 +1,10 @@
 # Prometheus Metrics Documentation
 
-This document describes all Prometheus metrics exposed by the Airflow Kubernetes Operator on port `9090`.
+This document describes all Prometheus metrics exposed by the Airflow Kubernetes Operator on port `9000`.
 
 ## Accessing Metrics
 
-Metrics are exposed at `http://localhost:9090/metrics` by default. The metrics endpoint is started automatically when the operator launches.
+Metrics are exposed at `http://localhost:9000/metrics` by default. The metrics endpoint is started automatically when the operator launches.
 
 ## Core Reconciliation Metrics
 
