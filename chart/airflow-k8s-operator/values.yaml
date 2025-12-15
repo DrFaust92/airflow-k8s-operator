@@ -140,8 +140,8 @@ dnsConfig: {}
 # -- (int) metrics port for the operator
 port: 8080
 
-# -- (int) metrics port for the operator container
-containerPort: 9000
+# -- (int) metrics port for Prometheus scraping
+metricsPort: 9000
 
 podMonitor:
   # -- (bool) create a PodMonitor for Prometheus Operator

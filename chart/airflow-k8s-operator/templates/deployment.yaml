@@ -43,7 +43,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: metrics
-              containerPort: {{ .Values.containerPort }}
+              containerPort: {{ .Values.metricsPort }}
             - name: http
               containerPort: {{ .Values.port }}
           {{- with .Values.envFrom }}

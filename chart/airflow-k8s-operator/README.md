@@ -9,7 +9,6 @@ A Helm chart for Kubernetes Airflow Operator
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` |  |
-| containerPort | int | `9000` | metrics port for the operator container |
 | dnsConfig | map | `{}` | dnsConfig for the pod |
 | env | list | `[]` | environment variables for the container (name/value entries) |
 | envFrom | list | `[]` | envFrom sources (configMapRef or secretRef) |
@@ -19,6 +18,7 @@ A Helm chart for Kubernetes Airflow Operator
 | image.tag | string | `""` | the image tag (overrides chart appVersion) Overrides the image tag whose default is the chart appVersion. |
 | imagePullSecrets | list | `[]` | image pull secrets for private registries |
 | livenessProbe | map | `{"httpGet":{"path":"/healthz","port":"http"}}` | liveness probe configuration |
+| metricsPort | int | `9000` | metrics port for Prometheus scraping |
 | nameOverride | string | `""` | short chart name override |
 | nodeSelector | object | `{}` |  |
 | operator.airflowHost | string | `""` | address for the operator |
