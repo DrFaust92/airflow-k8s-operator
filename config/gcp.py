@@ -1,7 +1,9 @@
+import logging
+
 import airflow_client.client as client
 import google.auth
 import google.auth.transport.requests
-import logging
+
 from config.base import AIRFLOW_HOST
 from config.metrics import AUTH_FAILURES
 
@@ -16,7 +18,7 @@ try:
     credentials.refresh(auth_req)
 except Exception as e:
     logger.error(f"Failed to authenticate with Google Cloud: {e}")
-    AUTH_FAILURES.labels(auth_type='google_cloud').inc()
+    AUTH_FAILURES.labels(auth_type="google_cloud").inc()
     raise
 
 configuration = client.Configuration(host=AIRFLOW_HOST)
@@ -55,7 +57,7 @@ class GoogleAuthApiClient(client.ApiClient):
                 self._credentials.refresh(self._auth_request)
             except Exception as e:
                 logger.error(f"Failed to refresh Google Cloud credentials: {e}")
-                AUTH_FAILURES.labels(auth_type='google_cloud').inc()
+                AUTH_FAILURES.labels(auth_type="google_cloud").inc()
                 raise
 
         # Set the authorization header

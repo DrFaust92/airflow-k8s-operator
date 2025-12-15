@@ -1,5 +1,6 @@
-import time
 import subprocess
+import time
+
 from kopf.testing import KopfRunner
 
 CRD_PATH = "chart/airflow-k8s-operator/templates/crds"

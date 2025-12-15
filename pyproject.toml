@@ -6,13 +6,33 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "apache-airflow-client==2.10.0",
-    "kopf>=1.38.0",
+    "kopf>=1.39.0",
     "google-auth[requests]>=2.43.0",
     "kubernetes>=34.1.0",
     "prometheus-client==0.23.1",
 ]
 
 [dependency-groups]
+dev = [
+    "ruff>=0.14.9",
+]
 test = [
     "pytest>=8.0.0",
 ]
+
+[tool.ruff]
+# Target version for Python (e.g., "py312")
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+# Enable specific rule sets (e.g., E/F for Flake8, I for isort)
+select = ["E", "F", "I"]
+# Optional: Ignore specific rules
+ignore = ["E501"]
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Use spaces for indentation
+indent-style = "space"

@@ -1,4 +1,5 @@
 import os
+
 import airflow_client.client as client
 from airflow_client.client.api.variable_api import VariableApi
 from airflow_client.client.model.variable import Variable

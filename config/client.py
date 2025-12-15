@@ -1,6 +1,8 @@
-import os
-import airflow_client.client as client
 import logging
+import os
+
+import airflow_client.client as client
+
 from config.base import AIRFLOW_HOST
 
 logger = logging.getLogger(__name__)

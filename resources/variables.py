@@ -1,15 +1,17 @@
-import kopf
 import time
+
+import kopf
 from airflow_client.client.api.variable_api import VariableApi
 from airflow_client.client.model.variable import Variable
+
+from config.base import OPERATOR_RECONCILE_INTERVAL
 from config.client import api_client
 from config.k8s_secret import resolve_value
-from config.base import OPERATOR_RECONCILE_INTERVAL
 from config.metrics import (
+    MANAGED_RESOURCES,
+    RECONCILIATION_FAILURES,
     RESOURCE_OPERATIONS,
     RESOURCE_RECONCILIATION_DURATION,
-    RECONCILIATION_FAILURES,
-    MANAGED_RESOURCES,
 )
 
 variables_api = VariableApi(api_client=api_client)
@@ -30,17 +32,25 @@ def create_variable(meta, spec, namespace, logger, body, **kwargs):
         variables_api.post_variables(variable)
 
         duration = time.time() - start_time
-        RESOURCE_RECONCILIATION_DURATION.labels(resource_type='variable', operation='create').observe(duration)
-        RESOURCE_OPERATIONS.labels(resource_type='variable', operation='create', status='success').inc()
-        MANAGED_RESOURCES.labels(resource_type='variable').inc()
+        RESOURCE_RECONCILIATION_DURATION.labels(
+            resource_type="variable", operation="create"
+        ).observe(duration)
+        RESOURCE_OPERATIONS.labels(
+            resource_type="variable", operation="create", status="success"
+        ).inc()
+        MANAGED_RESOURCES.labels(resource_type="variable").inc()
 
         logger.info(f"Variable {var_name} created with value: {var_value}")
         return {"message": f"Variable {var_name} created successfully."}
     except Exception as e:
         duration = time.time() - start_time
-        RESOURCE_RECONCILIATION_DURATION.labels(resource_type='variable', operation='create').observe(duration)
-        RESOURCE_OPERATIONS.labels(resource_type='variable', operation='create', status='failure').inc()
-        RECONCILIATION_FAILURES.labels(resource_type='variable').inc()
+        RESOURCE_RECONCILIATION_DURATION.labels(
+            resource_type="variable", operation="create"
+        ).observe(duration)
+        RESOURCE_OPERATIONS.labels(
+            resource_type="variable", operation="create", status="failure"
+        ).inc()
+        RECONCILIATION_FAILURES.labels(resource_type="variable").inc()
 
         logger.error(f"Failed to create Airflow Variable {var_name}: {e}")
         return {"error": f"Failed to create variable {var_name}: {e}"}
@@ -56,24 +66,34 @@ def delete_variable(meta, spec, namespace, logger, body, **kwargs):
         variables_api.delete_variable(variable_key=var_name)
 
         duration = time.time() - start_time
-        RESOURCE_RECONCILIATION_DURATION.labels(resource_type='variable', operation='delete').observe(duration)
-        RESOURCE_OPERATIONS.labels(resource_type='variable', operation='delete', status='success').inc()
-        MANAGED_RESOURCES.labels(resource_type='variable').dec()
+        RESOURCE_RECONCILIATION_DURATION.labels(
+            resource_type="variable", operation="delete"
+        ).observe(duration)
+        RESOURCE_OPERATIONS.labels(
+            resource_type="variable", operation="delete", status="success"
+        ).inc()
+        MANAGED_RESOURCES.labels(resource_type="variable").dec()
 
         return {"message": f"Variable {var_name} deleted successfully."}
     except Exception as e:
         duration = time.time() - start_time
-        RESOURCE_RECONCILIATION_DURATION.labels(resource_type='variable', operation='delete').observe(duration)
+        RESOURCE_RECONCILIATION_DURATION.labels(
+            resource_type="variable", operation="delete"
+        ).observe(duration)
 
         # Ignore 404 errors - variable already doesn't exist
         if "404" in str(e) or "Not Found" in str(e):
-            RESOURCE_OPERATIONS.labels(resource_type='variable', operation='delete', status='success').inc()
-            MANAGED_RESOURCES.labels(resource_type='variable').dec()
+            RESOURCE_OPERATIONS.labels(
+                resource_type="variable", operation="delete", status="success"
+            ).inc()
+            MANAGED_RESOURCES.labels(resource_type="variable").dec()
             logger.info(f"Variable {var_name} already deleted or doesn't exist")
             return {"message": f"Variable {var_name} already deleted or doesn't exist."}
 
-        RESOURCE_OPERATIONS.labels(resource_type='variable', operation='delete', status='failure').inc()
-        RECONCILIATION_FAILURES.labels(resource_type='variable').inc()
+        RESOURCE_OPERATIONS.labels(
+            resource_type="variable", operation="delete", status="failure"
+        ).inc()
+        RECONCILIATION_FAILURES.labels(resource_type="variable").inc()
         logger.error(f"Failed to delete Airflow Variable {var_name}: {e}")
         return {"error": f"Failed to delete variable {var_name}: {e}"}
 
@@ -97,16 +117,24 @@ def update_variable(meta, spec, namespace, logger, body, **kwargs):
         variables_api.patch_variable(variable_key=var_name, variable=variable)
 
         duration = time.time() - start_time
-        RESOURCE_RECONCILIATION_DURATION.labels(resource_type='variable', operation='update').observe(duration)
-        RESOURCE_OPERATIONS.labels(resource_type='variable', operation='update', status='success').inc()
+        RESOURCE_RECONCILIATION_DURATION.labels(
+            resource_type="variable", operation="update"
+        ).observe(duration)
+        RESOURCE_OPERATIONS.labels(
+            resource_type="variable", operation="update", status="success"
+        ).inc()
 
         logger.info(f"Variable {var_name} updated with value: {var_value}")
         return {"message": f"Variable {var_name} updated successfully."}
     except Exception as e:
         duration = time.time() - start_time
-        RESOURCE_RECONCILIATION_DURATION.labels(resource_type='variable', operation='update').observe(duration)
-        RESOURCE_OPERATIONS.labels(resource_type='variable', operation='update', status='failure').inc()
-        RECONCILIATION_FAILURES.labels(resource_type='variable').inc()
+        RESOURCE_RECONCILIATION_DURATION.labels(
+            resource_type="variable", operation="update"
+        ).observe(duration)
+        RESOURCE_OPERATIONS.labels(
+            resource_type="variable", operation="update", status="failure"
+        ).inc()
+        RECONCILIATION_FAILURES.labels(resource_type="variable").inc()
 
         logger.error(f"Failed to update Airflow Variable {var_name}: {e}")
         return {"error": f"Failed to update variable {var_name}: {e}"}

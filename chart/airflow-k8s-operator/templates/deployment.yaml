@@ -7,7 +7,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate
+    type: Recreate # Airflow Operator should have only one active pod as there is no leader election
   selector:
     matchLabels:
       {{- include "airflow-k8s-operator.selectorLabels" . | nindent 6 }}

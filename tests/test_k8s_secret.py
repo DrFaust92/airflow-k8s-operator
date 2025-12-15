@@ -1,10 +1,11 @@
-import pytest
-from unittest.mock import patch, MagicMock
-import sys
 import os
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from k8s_secret import resolve_value, _get_secret_value
+from k8s_secret import _get_secret_value, resolve_value
 
 
 def test_resolve_value_direct_string():

@@ -13,8 +13,6 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 ## Roadmap (TBD)
 
 - Support for AWS managed Airflow
-- Support for Managing users/roles
-- telemetry and metrics
 - making things more async
 
 ## Compatibility

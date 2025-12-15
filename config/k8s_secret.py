@@ -1,6 +1,7 @@
 import logging
-from kubernetes import client
 from collections.abc import Mapping
+
+from kubernetes import client
 
 
 def _get_secret_value(

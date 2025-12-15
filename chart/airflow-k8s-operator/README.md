@@ -1,6 +1,6 @@
 # airflow-k8s-operator
 
-![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0](https://img.shields.io/badge/AppVersion-0.4.0-informational?style=flat-square)
+![Version: 0.6.0](https://img.shields.io/badge/Version-0.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
 
 A Helm chart for Kubernetes Airflow Operator
 
@@ -16,14 +16,23 @@ A Helm chart for Kubernetes Airflow Operator
 | image.repository | string | `"ghcr.io/drfaust92/airflow-k8s-operator"` | the repository of the image |
 | image.tag | string | `""` | the image tag (overrides chart appVersion) Overrides the image tag whose default is the chart appVersion. |
 | imagePullSecrets | list | `[]` | image pull secrets for private registries |
-| livenessProbe | map | `{"httpGet":{"path":"/","port":"http"}}` | liveness probe configuration |
+| livenessProbe | map | `{"httpGet":{"path":"/healthz","port":"http"}}` | liveness probe configuration |
 | nameOverride | string | `""` | short chart name override |
 | nodeSelector | object | `{}` |  |
+| operator.airflowHost | string | `""` | address for the operator |
+| operator.basicAuthSecret.create | bool | `false` | whether to create the basic auth secret If set to false, you must provide a Kubernetes secret with the name specified in `secretName`. The secret must contain the keys specified in `usernameKey` and `passwordKey`. If the secret or keys do not exist, the deployment will fail. |
+| operator.basicAuthSecret.enabled | bool | `false` | whether to use basic auth secrets |
+| operator.basicAuthSecret.passwordKey | string | `"AIRFLOW_PASSWORD"` | key name for password in the secret |
+| operator.basicAuthSecret.secretName | string | `"airflow-basic-auth"` | name of the basic auth secret |
+| operator.basicAuthSecret.usernameKey | string | `"AIRFLOW_USERNAME"` | key name for username in the secret |
 | operator.livenessProbeAddress | string | `"http://0.0.0.0:{{ .Values.port }}/healthz"` | liveness probe address for the operator |
-| operator.logFormat | string | `"json"` | log format for the operator |
-| operator.logLevel | string | `"INFO"` | log level for the operator |
 | podAnnotations | map | `{}` | annotations to add to the pod |
 | podLabels | map | `{}` | labels to add to the pod |
+| podMonitor.enabled | bool | `false` | create a PodMonitor for Prometheus Operator |
+| podMonitor.interval | string | `"30s"` | scrape interval for the PodMonitor |
+| podMonitor.labels | map | `{}` | additional labels for the PodMonitor |
+| podMonitor.path | string | `""` | metrics path for the PodMonitor |
+| podMonitor.timeout | string | `"10s"` | scrape timeout for the PodMonitor |
 | podSecurityContext | map | `{}` | pod-level security context |
 | port | int | `8080` |  |
 | resources | object | `{}` |  |
