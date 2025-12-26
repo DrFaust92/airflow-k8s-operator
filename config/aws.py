@@ -35,8 +35,16 @@ def get_token_info(region, env_name, login_path):
         response = requests.post(login_url, data=login_payload, timeout=10)
         # Check if login was successful
         if response.status_code == 200:
+            # Safely retrieve the session cookie
+            session_token = response.cookies.get("_token")
+            if not session_token:
+                logging.error(
+                    "Login succeeded (HTTP 200) but session token cookie '_token' is missing"
+                )
+                AUTH_FAILURES.labels(auth_type="aws").inc()
+                return None
             # Return the hostname and the session cookie
-            return (f"https://{web_server_host_name}", response.cookies["_token"])
+            return (f"https://{web_server_host_name}", session_token)
         else:
             # Log an error
             logging.error("Failed to log in: HTTP %d", response.status_code)
@@ -50,6 +58,7 @@ def get_token_info(region, env_name, login_path):
     except Exception as e:
         # Log any other unexpected exceptions
         logging.error("An unexpected error occurred: %s", str(e))
+        AUTH_FAILURES.labels(auth_type="aws").inc()
         return None
 
 
@@ -120,14 +129,11 @@ class AWSAuthApiClient(client.ApiClient):
         )
 
 
-credentials = get_token_info(AWS_REGION, MWAA_ENV_NAME, MWAA_LOGIN_PATH)
-if not credentials:
-    raise RuntimeError("MWAA authentication failed; check IAM permissions and settings")
+# Defer MWAA token acquisition until the first API call to avoid import-time failures.
+credentials = None
 
-# Ensure we target the Airflow REST API base path
-configuration = client.Configuration(
-    host=f"{credentials[0].rstrip('/')}{AIRFLOW_API_BASE_URL}"
-)
+# Configuration host will be overridden per call via the `_host` parameter in `call_api`.
+configuration = client.Configuration(host=AIRFLOW_API_BASE_URL)
 aws_api_client = AWSAuthApiClient(
     configuration, AWS_REGION, MWAA_ENV_NAME, MWAA_LOGIN_PATH, credentials
 )
