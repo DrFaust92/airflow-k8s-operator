@@ -36,5 +36,10 @@ elif AIRFLOW_ACCESS_TOKEN:
     api_client = client.ApiClient(configuration=configuration)
 else:
     raise RuntimeError(
-        "Either USE_GOOGLE_AUTH must be true or (AIRFLOW_USERNAME and AIRFLOW_PASSWORD must be set) or AIRFLOW_ACCESS_TOKEN must be set or USE_AWS_AUTH must be true"
+        "Airflow client authentication is not configured.\n\n"
+        + "Configure at least one of the following options:\n"
+        + "- Set USE_GOOGLE_AUTH=true for Google Cloud authentication, or\n"
+        + "- Set USE_AWS_AUTH=true for AWS authentication, or\n"
+        + "- Set AIRFLOW_USERNAME and AIRFLOW_PASSWORD for basic authentication, or\n"
+        + "- Set AIRFLOW_ACCESS_TOKEN for token-based authentication."
     )

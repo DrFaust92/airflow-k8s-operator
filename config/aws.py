@@ -95,7 +95,9 @@ class AWSAuthApiClient(client.ApiClient):
         if not refreshed:
             logger.error("Failed to refresh MWAA session token")
             AUTH_FAILURES.labels(auth_type="aws").inc()
-            raise RuntimeError("MWAA authentication failed; cannot obtain session token")
+            raise RuntimeError(
+                "MWAA authentication failed; cannot obtain session token"
+            )
 
         self._credentials = refreshed
 
