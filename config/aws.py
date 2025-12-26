@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import airflow_client.client as client
 import boto3
@@ -21,13 +22,24 @@ if not AWS_REGION or not MWAA_ENV_NAME:
 
 
 def get_token_info(region, env_name, login_path):
+    """Obtain a new MWAA session token and return (hostname, token, expires_in).
+
+    Args:
+        region: AWS region for the MWAA environment.
+        env_name: Name of the MWAA environment.
+        login_path: Path to the login endpoint.
+
+    Returns:
+        Tuple of (hostname, session_token, expires_in_seconds) or None on failure.
+    """
     try:
         # Initialize MWAA client and request a web login token
         mwaa = boto3.client("mwaa", region_name=region)
         response = mwaa.create_web_login_token(Name=env_name)
-        # Extract the web server hostname and login token
+        # Extract the web server hostname, login token, and expiration time
         web_server_host_name = response["WebServerHostname"]
         web_token = response["WebToken"]
+        expires_in = response.get("ExpiresIn", 3600)  # Default to 1 hour if not provided
         # Construct the URL needed for authentication
         login_url = f"https://{web_server_host_name}{login_path}"
         login_payload = {"token": web_token}
@@ -43,8 +55,8 @@ def get_token_info(region, env_name, login_path):
                 )
                 AUTH_FAILURES.labels(auth_type="aws").inc()
                 return None
-            # Return the hostname and the session cookie
-            return (f"https://{web_server_host_name}", session_token)
+            # Return the hostname, session cookie, and expiration time
+            return (f"https://{web_server_host_name}", session_token, expires_in)
         else:
             # Log an error
             logging.error("Failed to log in: HTTP %d", response.status_code)
@@ -63,12 +75,33 @@ def get_token_info(region, env_name, login_path):
 
 
 class AWSAuthApiClient(client.ApiClient):
+    """API client with MWAA token caching and refresh logic.
+
+    Implements token caching to avoid unnecessary MWAA API calls.
+    Tokens are refreshed only when they are within a grace period of expiration.
+    """
+
+    # Grace period (in seconds) before token expiration to refresh proactively
+    TOKEN_REFRESH_GRACE = 60
+
     def __init__(self, configuration, region, env_name, login_path, credentials):
         super().__init__(configuration)
         self._region = region
         self._env_name = env_name
         self._login_path = login_path
-        self._credentials = credentials
+        self._credentials = credentials  # (hostname, token, expires_in) or None
+        self._token_expires_at = None  # Unix timestamp of token expiration
+
+    def _needs_token_refresh(self):
+        """Check if the cached token is expired or near expiration.
+
+        Returns True if the token is missing, expired, or within the grace period.
+        """
+        if not self._credentials or self._token_expires_at is None:
+            return True
+        # Refresh if within grace period of expiration
+        time_until_expiry = self._token_expires_at - time.time()
+        return time_until_expiry <= self.TOKEN_REFRESH_GRACE
 
     def call_api(
         self,
@@ -90,16 +123,19 @@ class AWSAuthApiClient(client.ApiClient):
         _host=None,
         _check_type=None,
     ):
-        # Refresh MWAA session token before each API call
-        refreshed = get_token_info(self._region, self._env_name, self._login_path)
-        if not refreshed:
-            logger.error("Failed to refresh MWAA session token")
-            AUTH_FAILURES.labels(auth_type="aws").inc()
-            raise RuntimeError(
-                "MWAA authentication failed; cannot obtain session token"
-            )
-
-        self._credentials = refreshed
+        # Refresh MWAA session token only if necessary (expired or near expiration)
+        if self._needs_token_refresh():
+            refreshed = get_token_info(self._region, self._env_name, self._login_path)
+            if not refreshed:
+                logger.error("Failed to refresh MWAA session token")
+                AUTH_FAILURES.labels(auth_type="aws").inc()
+                raise RuntimeError(
+                    "MWAA authentication failed; cannot obtain session token"
+                )
+            # Update cached credentials and expiration time
+            self._credentials = refreshed
+            # expires_in is in seconds, compute absolute expiration time
+            self._token_expires_at = time.time() + refreshed[2]
 
         # Set the authorization header
         if header_params is None:
