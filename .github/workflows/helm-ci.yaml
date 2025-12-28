@@ -45,8 +45,6 @@ jobs:
           context: .
           tags: "airflow-k8s-operator:ci-test"
           load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
