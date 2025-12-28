@@ -51,7 +51,6 @@ jobs:
         uses: helm/kind-action@v1.12.0
       - name: Load Docker image into kind
         if: steps.list-changed.outputs.changed == 'true'
-        id: load-docker-image
         run: |
           kind load docker-image airflow-k8s-operator:ci-test --name kind-chart-testing
 
