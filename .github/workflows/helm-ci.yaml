@@ -58,4 +58,4 @@ jobs:
 
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct install --config config.yaml --helm-extra-args "--set image.tag=ci-test --set image.repository=airflow-k8s-operator" --target-branch ${{ github.event.repository.default_branch }}
+        run: ct install --config config.yaml --target-branch ${{ github.event.repository.default_branch }}
