@@ -175,3 +175,5 @@ operator:
     passwordKey: AIRFLOW_PASSWORD
   # -- (string) liveness probe address for the operator
   livenessProbeAddress: "http://0.0.0.0:{{ .Values.port }}/healthz"
+  # -- (string) log format for the operator (full, json, simple)
+  logFormat: "json"

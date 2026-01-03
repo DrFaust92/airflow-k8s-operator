@@ -1,3 +1,4 @@
 chart-dirs:
   - chart
-helm-lint-extra-args: --set operator.airflowHost=airflow.example.com
+helm-lint-extra-args: --set operator.airflowHost=airflow.example.com --set image.tag=ci-test --set image.repository=airflow-k8s-operator
+helm-extra-set-args: --set operator.airflowHost=airflow.example.com --set image.tag=ci-test --set image.repository=airflow-k8s-operator --set operator.basicAuthSecret.enabled=true --set operator.basicAuthSecret.create=true

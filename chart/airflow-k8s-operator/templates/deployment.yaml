@@ -41,6 +41,7 @@ spec:
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["-v", "--log-format={{ .Values.operator.logFormat }}", "--liveness={{ tpl .Values.operator.livenessProbeAddress . }}"]
           ports:
             - name: metrics
               containerPort: {{ .Values.metricsPort }}

@@ -32,10 +32,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Reset the entrypoint, don't invoke `uv`
-ENTRYPOINT []
-
 # Use the non-root user to run our application
 USER nonroot
 
-CMD kopf run /app/main.py --liveness=${LIVENESS_PROBE:-http://0.0.0.0:8080/healthz}
+
+ENTRYPOINT ["kopf", "run", "/app/main.py"]

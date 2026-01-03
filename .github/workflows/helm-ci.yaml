@@ -37,11 +37,25 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --config config.yaml --target-branch ${{ github.event.repository.default_branch }}
 
-    # Uncomment the following to enable installation tests
-    #   - name: Create kind cluster
-    #     if: steps.list-changed.outputs.changed == 'true'
-    #     uses: helm/kind-action@v1.12.0
+      - name: Build Docker image
+        if: steps.list-changed.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64
+          context: .
+          tags: "airflow-k8s-operator:ci-test"
+          load: true
 
-    #   - name: Run chart-testing (install)
-    #     if: steps.list-changed.outputs.changed == 'true'
-    #     run: ct install --target-branch ${{ github.event.repository.default_branch }}
+      - name: Create kind cluster
+        if: steps.list-changed.outputs.changed == 'true'
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: kind-chart-testing
+      - name: Load Docker image into kind
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          kind load docker-image airflow-k8s-operator:ci-test --name kind-chart-testing
+
+      - name: Run chart-testing (install)
+        if: steps.list-changed.outputs.changed == 'true'
+        run: ct install --config config.yaml --target-branch ${{ github.event.repository.default_branch }}
