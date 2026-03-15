@@ -1,6 +1,6 @@
 # airflow-k8s-operator
 
-![Version: 0.8.0](https://img.shields.io/badge/Version-0.8.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0](https://img.shields.io/badge/AppVersion-0.2.0-informational?style=flat-square)
+![Version: 0.10.0](https://img.shields.io/badge/Version-0.10.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0](https://img.shields.io/badge/AppVersion-0.4.0-informational?style=flat-square)
 
 A Helm chart for Kubernetes Airflow Operator
 
@@ -35,6 +35,7 @@ A Helm chart for Kubernetes Airflow Operator
 | operator.basicAuthSecret.secretName | string | `"airflow-basic-auth"` | name of the basic auth secret |
 | operator.basicAuthSecret.usernameKey | string | `"AIRFLOW_USERNAME"` | key name for username in the secret |
 | operator.livenessProbeAddress | string | `"http://0.0.0.0:{{ .Values.port }}/healthz"` | liveness probe address for the operator |
+| operator.logFormat | string | `"json"` | log format for the operator (full, json, simple) |
 | podAnnotations | map | `{}` | annotations to add to the pod |
 | podLabels | map | `{}` | labels to add to the pod |
 | podMonitor.enabled | bool | `false` | create a PodMonitor for Prometheus Operator |
