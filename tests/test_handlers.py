@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import kopf
@@ -16,30 +17,39 @@ VAR_SPEC = {"value": "v"}
 POOL_SPEC = {"slots": 5, "description": "d"}
 
 
+def _patch():
+    """A stand-in for kopf's ``patch`` whose ``.status`` is a plain dict."""
+    return SimpleNamespace(status={})
+
+
 # --- connections ----------------------------------------------------------
 
 
-def test_create_connection_posts(monkeypatch):
+def test_create_connection_posts_and_marks_synced(monkeypatch):
     api = MagicMock()
     monkeypatch.setattr(connections, "connections_api", api)
+    patch = _patch()
 
     connections.create_connection(
-        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger
+        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=patch
     )
 
     api.post_connection.assert_called_once()
     api.patch_connection.assert_not_called()
+    assert patch.status["phase"] == "Synced"
 
 
-def test_create_connection_failure_raises_temporary(monkeypatch):
+def test_create_connection_failure_raises_and_marks_error(monkeypatch):
     api = MagicMock()
     api.post_connection.side_effect = ApiException(status=500, reason="boom")
     monkeypatch.setattr(connections, "connections_api", api)
+    patch = _patch()
 
     with pytest.raises(kopf.TemporaryError):
         connections.create_connection(
-            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger
+            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=patch
         )
+    assert patch.status["phase"] == "Error"
 
 
 def test_reconcile_connection_patches_when_present(monkeypatch):
@@ -47,7 +57,7 @@ def test_reconcile_connection_patches_when_present(monkeypatch):
     monkeypatch.setattr(connections, "connections_api", api)
 
     connections.reconcile_connection(
-        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger
+        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
     )
 
     api.patch_connection.assert_called_once()
@@ -60,7 +70,7 @@ def test_reconcile_connection_recreates_when_missing(monkeypatch):
     monkeypatch.setattr(connections, "connections_api", api)
 
     connections.reconcile_connection(
-        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger
+        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
     )
 
     # Drift heal: patch 404s, so it falls back to creating the connection.
@@ -75,7 +85,7 @@ def test_reconcile_connection_other_error_raises_temporary(monkeypatch):
 
     with pytest.raises(kopf.TemporaryError):
         connections.reconcile_connection(
-            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger
+            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
         )
 
 
@@ -110,7 +120,7 @@ def test_reconcile_variable_recreates_when_missing(monkeypatch):
     monkeypatch.setattr(variables, "variables_api", api)
 
     variables.reconcile_variable(
-        spec=VAR_SPEC, name="v1", namespace="ns", logger=logger
+        spec=VAR_SPEC, name="v1", namespace="ns", logger=logger, patch=_patch()
     )
 
     api.patch_variable.assert_called_once()
@@ -122,7 +132,7 @@ def test_reconcile_pool_recreates_when_missing(monkeypatch):
     api.patch_pool.side_effect = NotFoundException(status=404, reason="Not Found")
     monkeypatch.setattr(pools, "pools_api", api)
 
-    pools.reconcile_pool(spec=POOL_SPEC, name="p1", logger=logger)
+    pools.reconcile_pool(spec=POOL_SPEC, name="p1", logger=logger, patch=_patch())
 
     api.patch_pool.assert_called_once()
     api.post_pool.assert_called_once()

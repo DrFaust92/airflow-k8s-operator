@@ -7,7 +7,7 @@ from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL
 from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import track
+from config.reconcile import DELETE_MAX_RETRIES, track
 
 connections_api = ConnectionApi(api_client=api_client)
 
@@ -41,9 +41,9 @@ def _build_connection(name, spec, namespace, logger) -> Connection:
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "connections")
-def create_connection(spec, name, namespace, logger, **kwargs):
+def create_connection(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Connection: {name}")
-    with track("connection", "create", logger):
+    with track("connection", "create", logger, patch=patch):
         connections_api.post_connection(
             _build_connection(name, spec, namespace, logger)
         )
@@ -60,9 +60,9 @@ def create_connection(spec, name, namespace, logger, **kwargs):
     interval=OPERATOR_RECONCILE_INTERVAL,
     initial_delay=OPERATOR_RECONCILE_INTERVAL_DELAY,
 )
-def reconcile_connection(spec, name, namespace, logger, **kwargs):
+def reconcile_connection(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Reconciling Airflow Connection: {name}")
-    with track("connection", "update", logger):
+    with track("connection", "update", logger, patch=patch):
         connection = _build_connection(name, spec, namespace, logger)
         try:
             connections_api.patch_connection(connection_id=name, connection=connection)
@@ -72,12 +72,22 @@ def reconcile_connection(spec, name, namespace, logger, **kwargs):
     return {"message": f"Connection {name} reconciled successfully."}
 
 
-@kopf.on.delete("airflow.drfaust92", "v1beta1", "connections", retries=5)
-def delete_connection(name, namespace, logger, **kwargs):
-    # retries caps how long a failing delete blocks: after 5 attempts kopf gives
-    # up and releases the finalizer instead of wedging the resource forever.
+@kopf.on.delete(
+    "airflow.drfaust92", "v1beta1", "connections", retries=DELETE_MAX_RETRIES
+)
+def delete_connection(name, namespace, logger, retry=0, **kwargs):
+    # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
+    # attempts kopf gives up and releases the finalizer instead of wedging the
+    # resource forever. The final attempt emits a Warning event + metric.
     logger.info(f"Deleting Airflow Connection: {name}")
-    with track("connection", "delete", logger, delay=10):
+    with track(
+        "connection",
+        "delete",
+        logger,
+        delay=10,
+        retry=retry,
+        max_retries=DELETE_MAX_RETRIES,
+    ):
         try:
             connections_api.delete_connection(connection_id=name)
         except NotFoundException:

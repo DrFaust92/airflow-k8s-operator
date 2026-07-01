@@ -7,7 +7,7 @@ from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL
 from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import track
+from config.reconcile import DELETE_MAX_RETRIES, track
 
 variables_api = VariableApi(api_client=api_client)
 
@@ -22,9 +22,9 @@ def _build_variable(name, spec, namespace, logger) -> Variable:
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "variables")
-def create_variable(spec, name, namespace, logger, **kwargs):
+def create_variable(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Variable: {name}")
-    with track("variable", "create", logger):
+    with track("variable", "create", logger, patch=patch):
         variables_api.post_variables(_build_variable(name, spec, namespace, logger))
         MANAGED_RESOURCES.labels(resource_type="variable").inc()
     return {"message": f"Variable {name} created successfully."}
@@ -39,9 +39,9 @@ def create_variable(spec, name, namespace, logger, **kwargs):
     interval=OPERATOR_RECONCILE_INTERVAL,
     initial_delay=OPERATOR_RECONCILE_INTERVAL_DELAY,
 )
-def reconcile_variable(spec, name, namespace, logger, **kwargs):
+def reconcile_variable(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Reconciling Airflow Variable: {name}")
-    with track("variable", "update", logger):
+    with track("variable", "update", logger, patch=patch):
         variable = _build_variable(name, spec, namespace, logger)
         try:
             variables_api.patch_variable(variable_key=name, variable=variable)
@@ -51,12 +51,20 @@ def reconcile_variable(spec, name, namespace, logger, **kwargs):
     return {"message": f"Variable {name} reconciled successfully."}
 
 
-@kopf.on.delete("airflow.drfaust92", "v1beta1", "variables", retries=5)
-def delete_variable(name, namespace, logger, **kwargs):
-    # retries caps how long a failing delete blocks: after 5 attempts kopf gives
-    # up and releases the finalizer instead of wedging the resource forever.
+@kopf.on.delete("airflow.drfaust92", "v1beta1", "variables", retries=DELETE_MAX_RETRIES)
+def delete_variable(name, namespace, logger, retry=0, **kwargs):
+    # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
+    # attempts kopf gives up and releases the finalizer instead of wedging the
+    # resource forever. The final attempt emits a Warning event + metric.
     logger.info(f"Deleting Airflow Variable: {name}")
-    with track("variable", "delete", logger, delay=10):
+    with track(
+        "variable",
+        "delete",
+        logger,
+        delay=10,
+        retry=retry,
+        max_retries=DELETE_MAX_RETRIES,
+    ):
         try:
             variables_api.delete_variable(variable_key=name)
         except NotFoundException:

@@ -43,6 +43,13 @@ RECONCILIATION_FAILURES = prometheus.Counter(
     ["resource_type"],
 )
 
+RESOURCE_GIVEUPS = prometheus.Counter(
+    "airflow_resource_giveups_total",
+    "Operations abandoned after exhausting retries (e.g. a delete whose "
+    "finalizer was released while the Airflow object may still exist)",
+    ["resource_type", "operation"],
+)
+
 AUTH_FAILURES = prometheus.Counter(
     "airflow_auth_failures_total",
     "Total number of authentication failures",

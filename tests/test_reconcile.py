@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 
 import kopf
 import pytest
@@ -7,6 +8,10 @@ from prometheus_client import REGISTRY
 from config.reconcile import track
 
 logger = logging.getLogger("test")
+
+
+def _patch():
+    return SimpleNamespace(status={})
 
 
 def _counter(name, **labels):
@@ -82,3 +87,52 @@ def test_temporary_error_propagates_unwrapped():
     # Re-raised as-is rather than double-wrapped with the "Failed to ..." prefix.
     assert "original message" in str(excinfo.value)
     assert "Failed to create" not in str(excinfo.value)
+
+
+def _giveups(operation):
+    return _counter(
+        "airflow_resource_giveups_total",
+        resource_type="unittest",
+        operation=operation,
+    )
+
+
+def test_success_reflects_synced_status():
+    patch = _patch()
+    with track("unittest", "create", logger, patch=patch):
+        pass
+    assert patch.status["phase"] == "Synced"
+
+
+def test_failure_reflects_error_status():
+    patch = _patch()
+    with pytest.raises(kopf.TemporaryError):
+        with track("unittest", "update", logger, patch=patch):
+            raise ValueError("boom")
+    assert patch.status["phase"] == "Error"
+
+
+def test_delete_does_not_write_status():
+    patch = _patch()
+    with track("unittest", "delete", logger, patch=patch):
+        pass
+    # Deletes remove the object, so no status is written.
+    assert patch.status == {}
+
+
+def test_giveup_on_final_retry_emits_metric():
+    before = _giveups("delete")
+    with pytest.raises(kopf.TemporaryError):
+        # retry=4 is the 5th (final) attempt when max_retries=5.
+        with track("unittest", "delete", logger, retry=4, max_retries=5):
+            raise ValueError("backend down")
+    assert _giveups("delete") == before + 1
+
+
+def test_no_giveup_before_final_retry():
+    before = _giveups("delete")
+    with pytest.raises(kopf.TemporaryError):
+        with track("unittest", "delete", logger, retry=0, max_retries=5):
+            raise ValueError("backend down")
+    # Not the final attempt yet -> no give-up recorded.
+    assert _giveups("delete") == before

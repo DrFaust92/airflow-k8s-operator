@@ -6,7 +6,7 @@ from airflow_client.client.model.pool import Pool
 from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL_DELAY
 from config.client import api_client
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import track
+from config.reconcile import DELETE_MAX_RETRIES, track
 
 pools_api = PoolApi(api_client=api_client)
 
@@ -23,9 +23,9 @@ def _build_pool(name, spec) -> Pool:
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "pools")
-def create_pool(spec, name, logger, **kwargs):
+def create_pool(spec, name, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Pool: {name}")
-    with track("pool", "create", logger):
+    with track("pool", "create", logger, patch=patch):
         pools_api.post_pool(_build_pool(name, spec))
         MANAGED_RESOURCES.labels(resource_type="pool").inc()
     return {"message": f"Pool {name} created successfully."}
@@ -40,9 +40,9 @@ def create_pool(spec, name, logger, **kwargs):
     interval=OPERATOR_RECONCILE_INTERVAL,
     initial_delay=OPERATOR_RECONCILE_INTERVAL_DELAY,
 )
-def reconcile_pool(spec, name, logger, **kwargs):
+def reconcile_pool(spec, name, logger, patch, **kwargs):
     logger.info(f"Reconciling Airflow Pool: {name}")
-    with track("pool", "update", logger):
+    with track("pool", "update", logger, patch=patch):
         pool = _build_pool(name, spec)
         try:
             pools_api.patch_pool(pool_name=name, pool=pool)
@@ -52,12 +52,15 @@ def reconcile_pool(spec, name, logger, **kwargs):
     return {"message": f"Pool {name} reconciled successfully."}
 
 
-@kopf.on.delete("airflow.drfaust92", "v1beta1", "pools", retries=5)
-def delete_pool(name, logger, **kwargs):
-    # retries caps how long a failing delete blocks: after 5 attempts kopf gives
-    # up and releases the finalizer instead of wedging the resource forever.
+@kopf.on.delete("airflow.drfaust92", "v1beta1", "pools", retries=DELETE_MAX_RETRIES)
+def delete_pool(name, logger, retry=0, **kwargs):
+    # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
+    # attempts kopf gives up and releases the finalizer instead of wedging the
+    # resource forever. The final attempt emits a Warning event + metric.
     logger.info(f"Deleting Airflow Pool: {name}")
-    with track("pool", "delete", logger, delay=10):
+    with track(
+        "pool", "delete", logger, delay=10, retry=retry, max_retries=DELETE_MAX_RETRIES
+    ):
         try:
             pools_api.delete_pool(pool_name=name)
         except NotFoundException:
