@@ -11,15 +11,20 @@ from config.metrics import (
 
 
 @contextmanager
-def track(resource_type: str, operation: str, logger):
+def track(resource_type: str, operation: str, logger, delay: int = 30):
     """Measure a reconcile operation and surface failures to kopf.
 
     Records the operation duration and a success/failure counter. On any
     exception the failure metrics are recorded and the error is re-raised as a
-    ``kopf.TemporaryError`` so kopf retries with backoff. Returning normally
-    from a handler is treated by kopf as success, so failures MUST raise --
-    otherwise a failed create/update looks reconciled and a failed delete drops
-    the finalizer, orphaning the Airflow object.
+    ``kopf.TemporaryError`` (retried after ``delay`` seconds) so kopf retries
+    instead of treating the handler as succeeded. Returning normally from a
+    handler is treated by kopf as success, so failures MUST raise -- otherwise a
+    failed create/update looks reconciled and a failed delete drops the
+    finalizer, orphaning the Airflow object.
+
+    Delete handlers should also cap retries (``@kopf.on.delete(..., retries=N)``)
+    so kopf eventually gives up and releases the finalizer rather than blocking
+    the resource's deletion forever when the backend is unreachable.
     """
     start = time.time()
     try:
@@ -34,7 +39,7 @@ def track(resource_type: str, operation: str, logger):
         _record(resource_type, operation, start, ok=False)
         logger.error(f"Failed to {operation} {resource_type}: {e}")
         raise kopf.TemporaryError(
-            f"Failed to {operation} {resource_type}: {e}", delay=30
+            f"Failed to {operation} {resource_type}: {e}", delay=delay
         ) from e
     else:
         _record(resource_type, operation, start, ok=True)

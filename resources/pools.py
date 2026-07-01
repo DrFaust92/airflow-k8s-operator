@@ -52,10 +52,12 @@ def reconcile_pool(spec, name, logger, **kwargs):
     return {"message": f"Pool {name} reconciled successfully."}
 
 
-@kopf.on.delete("airflow.drfaust92", "v1beta1", "pools")
+@kopf.on.delete("airflow.drfaust92", "v1beta1", "pools", retries=5)
 def delete_pool(name, logger, **kwargs):
+    # retries caps how long a failing delete blocks: after 5 attempts kopf gives
+    # up and releases the finalizer instead of wedging the resource forever.
     logger.info(f"Deleting Airflow Pool: {name}")
-    with track("pool", "delete", logger):
+    with track("pool", "delete", logger, delay=10):
         try:
             pools_api.delete_pool(pool_name=name)
         except NotFoundException:

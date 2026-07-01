@@ -51,10 +51,12 @@ def reconcile_variable(spec, name, namespace, logger, **kwargs):
     return {"message": f"Variable {name} reconciled successfully."}
 
 
-@kopf.on.delete("airflow.drfaust92", "v1beta1", "variables")
+@kopf.on.delete("airflow.drfaust92", "v1beta1", "variables", retries=5)
 def delete_variable(name, namespace, logger, **kwargs):
+    # retries caps how long a failing delete blocks: after 5 attempts kopf gives
+    # up and releases the finalizer instead of wedging the resource forever.
     logger.info(f"Deleting Airflow Variable: {name}")
-    with track("variable", "delete", logger):
+    with track("variable", "delete", logger, delay=10):
         try:
             variables_api.delete_variable(variable_key=name)
         except NotFoundException:

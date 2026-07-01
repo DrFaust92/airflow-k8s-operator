@@ -72,10 +72,12 @@ def reconcile_connection(spec, name, namespace, logger, **kwargs):
     return {"message": f"Connection {name} reconciled successfully."}
 
 
-@kopf.on.delete("airflow.drfaust92", "v1beta1", "connections")
+@kopf.on.delete("airflow.drfaust92", "v1beta1", "connections", retries=5)
 def delete_connection(name, namespace, logger, **kwargs):
+    # retries caps how long a failing delete blocks: after 5 attempts kopf gives
+    # up and releases the finalizer instead of wedging the resource forever.
     logger.info(f"Deleting Airflow Connection: {name}")
-    with track("connection", "delete", logger):
+    with track("connection", "delete", logger, delay=10):
         try:
             connections_api.delete_connection(connection_id=name)
         except NotFoundException:
