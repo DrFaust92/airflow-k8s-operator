@@ -1,0 +1,27 @@
+name: unit-test
+
+on: pull_request
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6 # uses .python-version file by default
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Install dependencies
+        run: uv sync --group test
+
+      - name: Run unit tests
+        # Exclude the integration tests, which require a Kind cluster + Airflow.
+        run: >-
+          uv run pytest tests/
+          --ignore=tests/operator_test.py
+          --ignore=tests/variable_test.py
+          -v

@@ -24,17 +24,20 @@ def _build_connection(name, spec, namespace, logger) -> Connection:
         if spec.get("password")
         else None
     )
-    return Connection(
-        connection_id=name,
-        conn_type=spec.get("connType"),
-        description=spec.get("description"),
-        host=spec.get("host"),
-        login=login,
-        password=password,
-        port=spec.get("port"),
-        schema=spec.get("schema"),
-        extra=spec.get("extra"),
-    )
+    fields = {
+        "connection_id": name,
+        "conn_type": spec.get("connType"),
+        "description": spec.get("description"),
+        "host": spec.get("host"),
+        "login": login,
+        "password": password,
+        "port": spec.get("port"),
+        "schema": spec.get("schema"),
+        "extra": spec.get("extra"),
+    }
+    # The airflow client model rejects None for optional str fields, so only
+    # pass the fields that are actually set.
+    return Connection(**{k: v for k, v in fields.items() if v is not None})
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "connections")

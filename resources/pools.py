@@ -12,12 +12,14 @@ pools_api = PoolApi(api_client=api_client)
 
 
 def _build_pool(name, spec) -> Pool:
-    return Pool(
-        name=name,
-        description=spec.get("description"),
-        include_deferred=spec.get("includeDeferred", False),
-        slots=spec.get("slots"),
-    )
+    fields = {
+        "name": name,
+        "description": spec.get("description"),
+        "include_deferred": spec.get("includeDeferred", False),
+        "slots": spec.get("slots"),
+    }
+    # The airflow client model rejects None for optional fields.
+    return Pool(**{k: v for k, v in fields.items() if v is not None})
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "pools")

@@ -1,11 +1,8 @@
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from k8s_secret import _get_secret_value, resolve_value
+from config.k8s_secret import _get_secret_value, resolve_value
 
 
 def test_resolve_value_direct_string():
@@ -18,7 +15,7 @@ def test_resolve_value_with_explicit_key():
 
 
 def test_resolve_value_secret_ref():
-    with patch("k8s_secret._get_secret_value") as mock_get_secret:
+    with patch("config.k8s_secret._get_secret_value") as mock_get_secret:
         mock_get_secret.return_value = "secret-value"
         spec = {"secretRef": {"name": "my-secret", "key": "my-key"}}
         result = resolve_value(spec, "default")
@@ -27,7 +24,7 @@ def test_resolve_value_secret_ref():
 
 
 def test_extra_args_resolve_value_secret_ref():
-    with patch("k8s_secret._get_secret_value") as mock_get_secret:
+    with patch("config.k8s_secret._get_secret_value") as mock_get_secret:
         mock_get_secret.return_value = "secret-value"
         spec = {
             "description": "Example Airflow Variable that fetches value from a Kubernetes Secret.",
@@ -52,7 +49,7 @@ def test_resolve_value_invalid_spec():
 
 def test__get_secret_value_success():
     # Patch the Kubernetes client and secret object
-    with patch("k8s_secret.client.CoreV1Api") as mock_api:
+    with patch("config.k8s_secret.client.CoreV1Api") as mock_api:
         mock_instance = MagicMock()
         mock_api.return_value = mock_instance
         secret_obj = MagicMock()
@@ -66,7 +63,7 @@ def test__get_secret_value_success():
 
 
 def test__get_secret_value_missing_key():
-    with patch("k8s_secret.client.CoreV1Api") as mock_api:
+    with patch("config.k8s_secret.client.CoreV1Api") as mock_api:
         mock_instance = MagicMock()
         mock_api.return_value = mock_instance
         secret_obj = MagicMock()
@@ -77,7 +74,7 @@ def test__get_secret_value_missing_key():
 
 
 def test__get_secret_value_api_exception():
-    with patch("k8s_secret.client.CoreV1Api") as mock_api:
+    with patch("config.k8s_secret.client.CoreV1Api") as mock_api:
         mock_instance = MagicMock()
         mock_api.return_value = mock_instance
         mock_instance.read_namespaced_secret.side_effect = Exception("API error")

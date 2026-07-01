@@ -16,7 +16,9 @@ def _build_variable(name, spec, namespace, logger) -> Variable:
     # Value may be a direct value or resolved from a Kubernetes Secret; never
     # log the resolved value.
     var_value = resolve_value(spec, namespace, logger=logger)
-    return Variable(key=name, value=var_value, description=spec.get("description"))
+    fields = {"key": name, "value": var_value, "description": spec.get("description")}
+    # The airflow client model rejects None for optional str fields.
+    return Variable(**{k: v for k, v in fields.items() if v is not None})
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "variables")

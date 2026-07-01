@@ -21,6 +21,11 @@ test = [
     "pytest>=9.1.1",
 ]
 
+[tool.pytest.ini_options]
+# Put the repo root on sys.path so tests can `import config.*` / `resources.*`.
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.ruff]
 # Target version for Python (e.g., "py314")
 target-version = "py314"
