@@ -6,19 +6,19 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "apache-airflow-client==2.10.0",
-    "kopf>=1.44.5",
-    "google-auth[requests]>=2.49.1",
-    "kubernetes>=34.1.0",
+    "kopf>=1.44.6",
+    "google-auth[requests]>=2.55.1",
+    "kubernetes>=36.0.2",
     "prometheus-client==0.25.0",
-    "boto3>=1.42.30",
+    "boto3>=1.43.38",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.9",
+    "ruff>=0.15.20",
 ]
 test = [
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
 ]
 
 [tool.ruff]
