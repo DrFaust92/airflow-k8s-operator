@@ -12,16 +12,10 @@ import time
 import requests
 from kopf.testing import KopfRunner
 
-CHART = "chart/airflow-k8s-operator"
 TEST_PATH = "tests"
 
-# CRD manifests are Helm-templated (gated by crds.create); render before applying.
-CRD_RENDER = (
-    f"helm template t {CHART} --set operator.airflowHost=http://localhost:8080 "
-    "-s templates/crds/connection.yaml "
-    "-s templates/crds/pool.yaml "
-    "-s templates/crds/variable.yaml"
-)
+# CRDs live in their own chart now; render it with helm and pipe to kubectl.
+CRD_RENDER = "helm template t chart/airflow-k8s-operator-crds"
 
 
 def test_delete_gives_up_when_backend_unreachable():

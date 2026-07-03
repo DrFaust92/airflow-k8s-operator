@@ -1,0 +1,2 @@
+# This chart installs only the cluster-scoped CustomResourceDefinitions for the
+# Airflow Kubernetes Operator. It has no configurable values.

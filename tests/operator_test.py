@@ -11,17 +11,10 @@ from kopf.testing import KopfRunner
 
 from config.client import api_client
 
-CHART = "chart/airflow-k8s-operator"
 TEST_PATH = "tests"
 
-# The CRD manifests are Helm-templated (gated by crds.create), so render them
-# with helm before applying rather than kubectl-applying the raw templates.
-CRD_RENDER = (
-    f"helm template t {CHART} --set operator.airflowHost=http://localhost:8080 "
-    "-s templates/crds/connection.yaml "
-    "-s templates/crds/pool.yaml "
-    "-s templates/crds/variable.yaml"
-)
+# CRDs live in their own chart now; render it with helm and pipe to kubectl.
+CRD_RENDER = "helm template t chart/airflow-k8s-operator-crds"
 
 # Verify against Airflow using the SAME authenticated client the operator uses,
 # so the check works identically for Airflow 2 (/api/v1) and 3 (/api/v2).
