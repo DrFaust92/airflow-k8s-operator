@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import kopf
 import prometheus_client as prometheus
@@ -7,7 +8,14 @@ import resources.connections  # noqa: F401
 import resources.pools  # noqa: F401
 import resources.variables  # noqa: F401
 
-prometheus.start_http_server(9000)
+# Serving metrics is best-effort: if the port is unavailable, keep the operator
+# running (reconciliation is what matters) rather than crashing at startup.
+try:
+    prometheus.start_http_server(9000)
+except OSError as e:
+    logging.getLogger(__name__).warning(
+        "Could not start metrics server on :9000: %s", e
+    )
 
 
 @kopf.on.startup()

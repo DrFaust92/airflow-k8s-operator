@@ -56,6 +56,13 @@ def track(
         _record(resource_type, operation, start, ok=False)
         _set_status(patch, operation, "Error", f"{operation} failed: {e}")
         logger.error(f"Failed to {operation} {resource_type}: {e}")
+        if _is_permanent(e):
+            # The spec is rejected and won't succeed on retry; park the resource
+            # until it changes (an update re-triggers reconciliation) rather than
+            # looping forever.
+            raise kopf.PermanentError(
+                f"Failed to {operation} {resource_type} (not retryable): {e}"
+            ) from e
         if max_retries is not None and retry is not None and retry + 1 >= max_retries:
             RESOURCE_GIVEUPS.labels(
                 resource_type=resource_type, operation=operation
@@ -72,6 +79,17 @@ def track(
     else:
         _record(resource_type, operation, start, ok=True)
         _set_status(patch, operation, "Synced", f"{operation} succeeded")
+
+
+# HTTP statuses that indicate the request itself is invalid and will keep
+# failing until the spec changes -- no point retrying.
+_PERMANENT_STATUSES = frozenset({400, 422})
+
+
+def _is_permanent(exc: Exception) -> bool:
+    # Duck-typed on the airflow client's ApiException.status so this module
+    # stays client-agnostic.
+    return getattr(exc, "status", None) in _PERMANENT_STATUSES
 
 
 def _record(resource_type: str, operation: str, start: float, ok: bool):

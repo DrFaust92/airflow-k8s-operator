@@ -1,6 +1,6 @@
 import kopf
 from airflow_client.client.api.pool_api import PoolApi
-from airflow_client.client.exceptions import NotFoundException
+from airflow_client.client.exceptions import ApiException, NotFoundException
 from airflow_client.client.model.pool import Pool
 
 from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL_DELAY
@@ -26,7 +26,15 @@ def _build_pool(name, spec) -> Pool:
 def create_pool(spec, name, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Pool: {name}")
     with track("pool", "create", logger, patch=patch):
-        pools_api.post_pool(_build_pool(name, spec), _preload_content=False)
+        pool = _build_pool(name, spec)
+        try:
+            pools_api.post_pool(pool, _preload_content=False)
+        except ApiException as e:
+            if e.status != 409:
+                raise
+            # Already exists in Airflow; adopt it by patching.
+            logger.info(f"Pool {name} already exists in Airflow; adopting")
+            pools_api.patch_pool(pool_name=name, pool=pool, _preload_content=False)
         MANAGED_RESOURCES.labels(resource_type="pool").inc()
     return {"message": f"Pool {name} created successfully."}
 

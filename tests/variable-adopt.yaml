@@ -1,0 +1,8 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Variable
+metadata:
+  name: adopted-variable
+  # namespace: default
+spec:
+  value: "adopted-by-operator"
+  description: "Pre-existing in Airflow; the operator must adopt it via 409->patch."

@@ -52,6 +52,34 @@ def test_create_connection_failure_raises_and_marks_error(monkeypatch):
     assert patch.status["phase"] == "Error"
 
 
+def test_create_connection_adopts_on_conflict(monkeypatch):
+    api = MagicMock()
+    api.post_connection.side_effect = ApiException(status=409, reason="exists")
+    monkeypatch.setattr(connections, "connections_api", api)
+    patch = _patch()
+
+    connections.create_connection(
+        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=patch
+    )
+
+    # 409 on create -> adopt via patch, and end up Synced (no conflict loop).
+    api.post_connection.assert_called_once()
+    api.patch_connection.assert_called_once()
+    assert patch.status["phase"] == "Synced"
+
+
+def test_create_connection_bad_request_is_permanent(monkeypatch):
+    api = MagicMock()
+    api.post_connection.side_effect = ApiException(status=400, reason="bad spec")
+    monkeypatch.setattr(connections, "connections_api", api)
+
+    # A rejected spec must not retry forever.
+    with pytest.raises(kopf.PermanentError):
+        connections.create_connection(
+            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
+        )
+
+
 def test_reconcile_connection_patches_when_present(monkeypatch):
     api = MagicMock()
     monkeypatch.setattr(connections, "connections_api", api)

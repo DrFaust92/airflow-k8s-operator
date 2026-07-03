@@ -6,6 +6,7 @@ from airflow_client.client.api.connection_api import ConnectionApi
 from airflow_client.client.api.pool_api import PoolApi
 from airflow_client.client.api.variable_api import VariableApi
 from airflow_client.client.exceptions import NotFoundException
+from airflow_client.client.model.variable import Variable
 from kopf.testing import KopfRunner
 
 from config.client import api_client
@@ -134,6 +135,30 @@ def test_operator():
             f"kubectl delete -f {TEST_PATH}/pool.yaml", shell=True, check=True
         )
         _assert_absent(pool_api.get_pool, "example-pool")
+
+        # 409 adopt: pre-create a variable in Airflow, then a CR with the same
+        # name must be adopted (create -> 409 -> patch) and reconciled to the
+        # CR's value, not loop forever on the conflict.
+        variable_api.post_variables(
+            Variable(key="adopted-variable", value="pre-existing"),
+            _preload_content=False,
+        )
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/variable-adopt.yaml",
+            shell=True,
+            check=True,
+        )
+        _wait_for_synced("variable", "adopted-variable")
+        adopted = _airflow_get(variable_api.get_variable, "adopted-variable")
+        assert adopted is not None and adopted.get("value") == "adopted-by-operator", (
+            adopted
+        )
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/variable-adopt.yaml",
+            shell=True,
+            check=True,
+        )
+        _assert_absent(variable_api.get_variable, "adopted-variable")
 
         # Failure path: a Variable whose secretRef points at a nonexistent
         # Secret must surface phase=Error, must NOT be created in Airflow, and

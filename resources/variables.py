@@ -1,6 +1,6 @@
 import kopf
 from airflow_client.client.api.variable_api import VariableApi
-from airflow_client.client.exceptions import NotFoundException
+from airflow_client.client.exceptions import ApiException, NotFoundException
 from airflow_client.client.model.variable import Variable
 
 from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL_DELAY
@@ -25,9 +25,17 @@ def _build_variable(name, spec, namespace, logger) -> Variable:
 def create_variable(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Variable: {name}")
     with track("variable", "create", logger, patch=patch):
-        variables_api.post_variables(
-            _build_variable(name, spec, namespace, logger), _preload_content=False
-        )
+        variable = _build_variable(name, spec, namespace, logger)
+        try:
+            variables_api.post_variables(variable, _preload_content=False)
+        except ApiException as e:
+            if e.status != 409:
+                raise
+            # Already exists in Airflow; adopt it by patching.
+            logger.info(f"Variable {name} already exists in Airflow; adopting")
+            variables_api.patch_variable(
+                variable_key=name, variable=variable, _preload_content=False
+            )
         MANAGED_RESOURCES.labels(resource_type="variable").inc()
     return {"message": f"Variable {name} created successfully."}
 
