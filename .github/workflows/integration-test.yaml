@@ -132,3 +132,29 @@ jobs:
 
       - name: Run operator test
         run: uv run pytest tests/operator_test.py
+
+  giveup:
+    # No Airflow: point the operator at an unreachable backend and assert a
+    # failing delete gives up after retries and releases the finalizer.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6 # uses .python-version file by default
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.2.0
+
+      - name: Install dependencies
+        run: uv sync --group test
+
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+
+      - name: Run give-up integration test
+        env:
+          AIRFLOW_HOST: http://127.0.0.1:9
+          AIRFLOW_ACCESS_TOKEN: unreachable
+        run: uv run pytest tests/giveup_test.py -v

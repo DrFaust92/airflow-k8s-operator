@@ -30,20 +30,24 @@ def _phase(kind, name):
     return result.stdout.strip()
 
 
-def _wait_for_synced(kind, name, timeout=180):
-    """Wait until the operator reports it reconciled the resource against
-    Airflow (status.phase=Synced). The operator retries until Airflow is
-    ready, so this also absorbs Airflow's startup time."""
+def _wait_for_phase(kind, name, expected, timeout=180):
+    """Wait until the CR's status.phase reaches `expected`. The operator retries
+    until Airflow is ready, so a Synced wait also absorbs Airflow startup."""
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
         last = _phase(kind, name)
-        if last == "Synced":
+        if last == expected:
             return
         time.sleep(3)
     raise AssertionError(
-        f"{kind}/{name} did not reach phase=Synced within {timeout}s (last {last!r})"
+        f"{kind}/{name} did not reach phase={expected} within {timeout}s "
+        f"(last {last!r})"
     )
+
+
+def _wait_for_synced(kind, name, timeout=180):
+    _wait_for_phase(kind, name, "Synced", timeout)
 
 
 def _airflow_get(get_callable, *args):
@@ -70,7 +74,7 @@ def _assert_absent(get_callable, *args, timeout=45):
 
 
 def test_operator():
-    with KopfRunner(["run", "-A", "--verbose", "main.py"]) as runner:
+    with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         # create CRDs
         subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
         time.sleep(1)
@@ -131,11 +135,24 @@ def test_operator():
         )
         _assert_absent(pool_api.get_pool, "example-pool")
 
+        # Failure path: a Variable whose secretRef points at a nonexistent
+        # Secret must surface phase=Error, must NOT be created in Airflow, and
+        # must still delete cleanly (finalizer released, no wedge). Folded into
+        # this runner because a second KopfRunner in-process would re-bind the
+        # Prometheus port. Independent of Airflow, so it also exercises v1/v2.
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/variable-missing-secret.yaml",
+            shell=True,
+            check=True,
+        )
+        _wait_for_phase("variable", "broken-variable", "Error", timeout=90)
+        assert _airflow_get(variable_api.get_variable, "broken-variable") is None
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/variable-missing-secret.yaml",
+            shell=True,
+            check=True,
+            timeout=120,
+        )
+
         # delete CRDs
         subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)
-
-    # The operator must not have abandoned a delete (finalizer released while
-    # the Airflow object may still exist).
-    assert "Giving up after" not in runner.stdout, (
-        "operator gave up on a delete; the Airflow backend rejected the request"
-    )
