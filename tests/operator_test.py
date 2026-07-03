@@ -31,12 +31,38 @@ def _airflow_session():
     return session
 
 
+def _phase(kind, name):
+    result = subprocess.run(
+        f"kubectl get {kind} {name} -o jsonpath='{{.status.phase}}'",
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _wait_for_synced(kind, name, timeout=180):
+    """Wait until the operator reports it reconciled the resource against
+    Airflow (status.phase=Synced). The operator retries until Airflow is
+    ready, so this also absorbs Airflow's startup time."""
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        last = _phase(kind, name)
+        if last == "Synced":
+            return
+        time.sleep(3)
+    raise AssertionError(
+        f"{kind}/{name} did not reach phase=Synced within {timeout}s (last {last!r})"
+    )
+
+
 def _get(session, path):
     return session.get(f"{_airflow_base()}{path}", timeout=30)
 
 
-def _assert_exists_in_airflow(session, path, timeout=45):
-    """Poll Airflow directly until the resource exists (HTTP 200)."""
+def _airflow_json(session, path, timeout=30):
+    """GET a resource from Airflow directly, asserting it exists (HTTP 200)."""
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
@@ -48,7 +74,7 @@ def _assert_exists_in_airflow(session, path, timeout=45):
     raise AssertionError(f"{path} not found in Airflow within {timeout}s (last {last})")
 
 
-def _assert_absent_in_airflow(session, path, timeout=30):
+def _assert_absent_in_airflow(session, path, timeout=45):
     """Poll Airflow directly until the resource is gone (HTTP 404)."""
     deadline = time.time() + timeout
     last = None
@@ -70,11 +96,13 @@ def test_operator():
         subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
         time.sleep(1)
 
-        # Variable: create -> exists with value; update -> value changes; delete -> gone
+        # Variable: create -> operator Synced + exists in Airflow with value;
+        # update -> value changes; delete -> gone from Airflow.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/variable.yaml", shell=True, check=True
         )
-        var = _assert_exists_in_airflow(session, "/variables/example-variable")
+        _wait_for_synced("variable", "example-variable")
+        var = _airflow_json(session, "/variables/example-variable")
         assert var.get("value") == "s3://example-bucket/data/path", var
 
         subprocess.run(
@@ -82,7 +110,7 @@ def test_operator():
             shell=True,
             check=True,
         )
-        time.sleep(3)
+        time.sleep(5)
         updated = _get(session, "/variables/example-variable").json()
         assert updated.get("value") != "s3://example-bucket/data/path", updated
 
@@ -91,29 +119,31 @@ def test_operator():
         )
         _assert_absent_in_airflow(session, "/variables/example-variable")
 
-        # Connection: create -> exists; delete -> gone
+        # Connection: create -> Synced + exists; delete -> gone.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/connection.yaml", shell=True, check=True
         )
-        _assert_exists_in_airflow(session, "/connections/example-connection")
+        _wait_for_synced("connection", "example-connection")
+        _airflow_json(session, "/connections/example-connection")
 
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/connection.yaml", shell=True, check=True
         )
         _assert_absent_in_airflow(session, "/connections/example-connection")
 
-        # Pool: create -> exists; update; delete -> gone
+        # Pool: create -> Synced + exists; update; delete -> gone.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/pool.yaml", shell=True, check=True
         )
-        _assert_exists_in_airflow(session, "/pools/example-pool")
+        _wait_for_synced("pool", "example-pool")
+        _airflow_json(session, "/pools/example-pool")
 
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/pool-updated.yaml",
             shell=True,
             check=True,
         )
-        time.sleep(3)
+        time.sleep(5)
 
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/pool.yaml", shell=True, check=True
