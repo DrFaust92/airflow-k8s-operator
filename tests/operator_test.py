@@ -11,8 +11,17 @@ from kopf.testing import KopfRunner
 
 from config.client import api_client
 
-CRD_PATH = "chart/airflow-k8s-operator/templates/crds"
+CHART = "chart/airflow-k8s-operator"
 TEST_PATH = "tests"
+
+# The CRD manifests are Helm-templated (gated by crds.create), so render them
+# with helm before applying rather than kubectl-applying the raw templates.
+CRD_RENDER = (
+    f"helm template t {CHART} --set operator.airflowHost=http://localhost:8080 "
+    "-s templates/crds/connection.yaml "
+    "-s templates/crds/pool.yaml "
+    "-s templates/crds/variable.yaml"
+)
 
 # Verify against Airflow using the SAME authenticated client the operator uses,
 # so the check works identically for Airflow 2 (/api/v1) and 3 (/api/v2).
@@ -77,7 +86,7 @@ def _assert_absent(get_callable, *args, timeout=45):
 def test_operator():
     with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         # create CRDs
-        subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
+        subprocess.run(f"{CRD_RENDER} | kubectl apply -f -", shell=True, check=True)
         time.sleep(1)
 
         # Variable: create -> Synced + exists in Airflow with value;
@@ -180,4 +189,4 @@ def test_operator():
         )
 
         # delete CRDs
-        subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)
+        subprocess.run(f"{CRD_RENDER} | kubectl delete -f -", shell=True, check=True)

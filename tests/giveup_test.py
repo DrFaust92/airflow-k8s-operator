@@ -12,13 +12,21 @@ import time
 import requests
 from kopf.testing import KopfRunner
 
-CRD_PATH = "chart/airflow-k8s-operator/templates/crds"
+CHART = "chart/airflow-k8s-operator"
 TEST_PATH = "tests"
+
+# CRD manifests are Helm-templated (gated by crds.create); render before applying.
+CRD_RENDER = (
+    f"helm template t {CHART} --set operator.airflowHost=http://localhost:8080 "
+    "-s templates/crds/connection.yaml "
+    "-s templates/crds/pool.yaml "
+    "-s templates/crds/variable.yaml"
+)
 
 
 def test_delete_gives_up_when_backend_unreachable():
     with KopfRunner(["run", "-A", "--verbose", "main.py"]):
-        subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
+        subprocess.run(f"{CRD_RENDER} | kubectl apply -f -", shell=True, check=True)
         time.sleep(1)
 
         # Create is attempted (and fails against the unreachable backend), but
@@ -43,7 +51,7 @@ def test_delete_gives_up_when_backend_unreachable():
         # (log capture through KopfRunner is unreliable; the metric is not).
         metrics = requests.get("http://localhost:9000/metrics", timeout=10).text
 
-        subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)
+        subprocess.run(f"{CRD_RENDER} | kubectl delete -f -", shell=True, check=True)
 
     giveups = [
         line
