@@ -73,6 +73,13 @@ export AIRFLOW_HOST=http://airflow.example.com
 export AIRFLOW_ACCESS_TOKEN=your_access_token
 ```
 
+> **Note:** a static `AIRFLOW_ACCESS_TOKEN` is **not refreshed** — once it
+> expires the operator starts failing (`phase=Error`) until it is redeployed
+> with a new token. For a long-running operator prefer
+> `AIRFLOW_USERNAME`/`AIRFLOW_PASSWORD` (auto-refreshed against Airflow 3's
+> `/auth/token`), or rotate the token out-of-band. The operator logs a warning
+> at startup when a static token is used.
+
 ### AWS (MWAA) Authentication
 
 Use this for Amazon Managed Workflows for Apache Airflow (MWAA). The operator will obtain a short-lived web login token from MWAA and use the returned session cookie to call the Airflow REST API.
@@ -262,6 +269,21 @@ helm upgrade --install airflow-tenant-b oci://ghcr.io/drfaust92/charts/airflow-k
 A `Variable`/`Connection`/`Pool` created in `tenant-a` is reconciled only by
 that namespace's operator, against Airflow A. Namespaced operators run with
 `--standalone`, so they don't peer with (or pause) one another.
+
+> **Migrating existing installs to the CRD chart:** an in-place
+> `helm upgrade` of the operator chart needs nothing — the CRDs simply move to
+> the bundled subchart under the same release. You only need to act if you want
+> a **separate** `airflow-k8s-operator-crds` release to own CRDs that were
+> previously installed by the operator release: Helm will otherwise reject it
+> with "invalid ownership metadata". Re-label them once to hand over ownership:
+>
+> ```bash
+> for crd in connections pools variables; do
+>   kubectl annotate crd $crd.airflow.drfaust92 --overwrite \
+>     meta.helm.sh/release-name=airflow-crds meta.helm.sh/release-namespace=<ns>
+>   kubectl label crd $crd.airflow.drfaust92 --overwrite app.kubernetes.io/managed-by=Helm
+> done
+> ```
 
 ### AWS (MWAA) on EKS
 
