@@ -74,7 +74,7 @@ def _assert_absent(get_callable, *args, timeout=45):
 
 
 def test_operator():
-    with KopfRunner(["run", "-A", "--verbose", "main.py"]) as runner:
+    with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         # create CRDs
         subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
         time.sleep(1)
@@ -135,38 +135,18 @@ def test_operator():
         )
         _assert_absent(pool_api.get_pool, "example-pool")
 
-        # delete CRDs
-        subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)
-
-    # The operator must not have abandoned a delete (finalizer released while
-    # the Airflow object may still exist).
-    assert "Giving up after" not in runner.stdout, (
-        "operator gave up on a delete; the Airflow backend rejected the request"
-    )
-
-
-def test_failed_create_surfaces_error():
-    """A reconcile failure must be visible and must not create the resource.
-
-    Uses a Variable whose secretRef points at a nonexistent Secret, so the
-    operator fails before ever calling Airflow -- independent of Airflow.
-    """
-    with KopfRunner(["run", "-A", "--verbose", "main.py"]):
-        subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
-        time.sleep(1)
-
+        # Failure path: a Variable whose secretRef points at a nonexistent
+        # Secret must surface phase=Error, must NOT be created in Airflow, and
+        # must still delete cleanly (finalizer released, no wedge). Folded into
+        # this runner because a second KopfRunner in-process would re-bind the
+        # Prometheus port. Independent of Airflow, so it also exercises v1/v2.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/variable-missing-secret.yaml",
             shell=True,
             check=True,
         )
-
-        # The failure is surfaced on the CR ...
         _wait_for_phase("variable", "broken-variable", "Error", timeout=90)
-        # ... and nothing was created in Airflow.
         assert _airflow_get(variable_api.get_variable, "broken-variable") is None
-
-        # A failed-create CR still deletes cleanly (finalizer released, no wedge).
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/variable-missing-secret.yaml",
             shell=True,
@@ -174,4 +154,5 @@ def test_failed_create_surfaces_error():
             timeout=120,
         )
 
+        # delete CRDs
         subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)

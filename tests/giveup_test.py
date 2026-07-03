@@ -9,6 +9,7 @@ forever -- proving `kubectl delete` completes even when the backend is down.
 import subprocess
 import time
 
+import requests
 from kopf.testing import KopfRunner
 
 CRD_PATH = "chart/airflow-k8s-operator/templates/crds"
@@ -16,7 +17,7 @@ TEST_PATH = "tests"
 
 
 def test_delete_gives_up_when_backend_unreachable():
-    with KopfRunner(["run", "-A", "--verbose", "main.py"]) as runner:
+    with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
         time.sleep(1)
 
@@ -28,8 +29,9 @@ def test_delete_gives_up_when_backend_unreachable():
         time.sleep(5)
 
         # Delete blocks on the finalizer while the delete handler keeps failing;
-        # after DELETE_MAX_RETRIES kopf gives up and releases it, so this
-        # completes (rather than hanging until the timeout). ~50s worst case.
+        # after DELETE_MAX_RETRIES kopf gives up and releases it. If give-up were
+        # broken this would hang until the timeout (-> test failure), because the
+        # delete can never succeed against an unreachable backend. ~50s worst case.
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/variable.yaml",
             shell=True,
@@ -37,9 +39,17 @@ def test_delete_gives_up_when_backend_unreachable():
             timeout=180,
         )
 
+        # Positively confirm the give-up via the operator's metrics endpoint
+        # (log capture through KopfRunner is unreliable; the metric is not).
+        metrics = requests.get("http://localhost:9000/metrics", timeout=10).text
+
         subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)
 
-    # The give-up must have been emitted (Warning + metric path).
-    assert "Giving up after" in runner.stdout, (
-        "expected the delete handler to give up after exhausting retries"
-    )
+    giveups = [
+        line
+        for line in metrics.splitlines()
+        if line.startswith("airflow_resource_giveups_total{")
+        and 'operation="delete"' in line
+        and float(line.rsplit(" ", 1)[1]) >= 1
+    ]
+    assert giveups, "expected a delete give-up to be recorded in metrics"
