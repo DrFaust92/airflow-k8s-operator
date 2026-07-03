@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import kopf
 import pytest
+from airflow_client.client.exceptions import ApiException
 from prometheus_client import REGISTRY
 
 from config.reconcile import track
@@ -136,3 +137,17 @@ def test_no_giveup_before_final_retry():
             raise ValueError("backend down")
     # Not the final attempt yet -> no give-up recorded.
     assert _giveups("delete") == before
+
+
+def test_permanent_status_raises_permanent_error():
+    # A 4xx that won't succeed on retry must stop the loop.
+    with pytest.raises(kopf.PermanentError):
+        with track("unittest", "create", logger):
+            raise ApiException(status=422, reason="unprocessable")
+
+
+def test_retryable_status_raises_temporary_error():
+    # A 5xx is transient and should keep retrying.
+    with pytest.raises(kopf.TemporaryError):
+        with track("unittest", "create", logger):
+            raise ApiException(status=503, reason="unavailable")

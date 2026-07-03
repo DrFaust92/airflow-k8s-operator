@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import threading
 import time
 
 import airflow_client.client as client
@@ -56,6 +57,8 @@ class JwtAuthApiClient(client.ApiClient):
         self._password = password
         self._token = None
         self._expires_at = 0.0
+        # kopf reconciles resources on a thread pool; guard the token cache.
+        self._lock = threading.Lock()
 
     def _fetch_token(self):
         try:
@@ -79,12 +82,14 @@ class JwtAuthApiClient(client.ApiClient):
         self._expires_at = _jwt_expiry(token)
 
     def _authorization(self, force=False):
-        expiring = (
-            self._expires_at and time.time() >= self._expires_at - _JWT_REFRESH_GRACE
-        )
-        if force or self._token is None or expiring:
-            self._fetch_token()
-        return f"Bearer {self._token}"
+        with self._lock:
+            expiring = (
+                self._expires_at
+                and time.time() >= self._expires_at - _JWT_REFRESH_GRACE
+            )
+            if force or self._token is None or expiring:
+                self._fetch_token()
+            return f"Bearer {self._token}"
 
     def call_api(
         self,

@@ -1,6 +1,6 @@
 import kopf
 from airflow_client.client.api.connection_api import ConnectionApi
-from airflow_client.client.exceptions import NotFoundException
+from airflow_client.client.exceptions import ApiException, NotFoundException
 from airflow_client.client.model.connection import Connection
 
 from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL_DELAY
@@ -44,9 +44,18 @@ def _build_connection(name, spec, namespace, logger) -> Connection:
 def create_connection(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Connection: {name}")
     with track("connection", "create", logger, patch=patch):
-        connections_api.post_connection(
-            _build_connection(name, spec, namespace, logger), _preload_content=False
-        )
+        connection = _build_connection(name, spec, namespace, logger)
+        try:
+            connections_api.post_connection(connection, _preload_content=False)
+        except ApiException as e:
+            if e.status != 409:
+                raise
+            # Already exists in Airflow (created out-of-band or re-created CR);
+            # adopt it by patching instead of looping on the conflict.
+            logger.info(f"Connection {name} already exists in Airflow; adopting")
+            connections_api.patch_connection(
+                connection_id=name, connection=connection, _preload_content=False
+            )
         MANAGED_RESOURCES.labels(resource_type="connection").inc()
     return {"message": f"Connection {name} created successfully."}
 
