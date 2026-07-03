@@ -186,6 +186,12 @@ elif AIRFLOW_ACCESS_TOKEN:
     configuration = client.Configuration(host=AIRFLOW_HOST)
     api_client = client.ApiClient(configuration=configuration)
     api_client.set_default_header("Authorization", f"Bearer {AIRFLOW_ACCESS_TOKEN}")
+    logger.warning(
+        "Using a static AIRFLOW_ACCESS_TOKEN; it is not refreshed and the "
+        "operator will start failing once it expires. For a long-running "
+        "operator, prefer AIRFLOW_USERNAME/AIRFLOW_PASSWORD (auto-refreshed "
+        "against Airflow 3's /auth/token) or rotate the token out-of-band."
+    )
 else:
     raise RuntimeError(
         "Airflow client authentication is not configured.\n\n"
