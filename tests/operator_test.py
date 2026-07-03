@@ -1,62 +1,141 @@
+import json
 import subprocess
 import time
 
+from airflow_client.client.api.connection_api import ConnectionApi
+from airflow_client.client.api.pool_api import PoolApi
+from airflow_client.client.api.variable_api import VariableApi
+from airflow_client.client.exceptions import NotFoundException
 from kopf.testing import KopfRunner
+
+from config.client import api_client
 
 CRD_PATH = "chart/airflow-k8s-operator/templates/crds"
 TEST_PATH = "tests"
 
+# Verify against Airflow using the SAME authenticated client the operator uses,
+# so the check works identically for Airflow 2 (/api/v1) and 3 (/api/v2).
+variable_api = VariableApi(api_client)
+connection_api = ConnectionApi(api_client)
+pool_api = PoolApi(api_client)
+
+
+def _phase(kind, name):
+    result = subprocess.run(
+        f"kubectl get {kind} {name} -o jsonpath='{{.status.phase}}'",
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _wait_for_synced(kind, name, timeout=180):
+    """Wait until the operator reports it reconciled the resource against
+    Airflow (status.phase=Synced). The operator retries until Airflow is
+    ready, so this also absorbs Airflow's startup time."""
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        last = _phase(kind, name)
+        if last == "Synced":
+            return
+        time.sleep(3)
+    raise AssertionError(
+        f"{kind}/{name} did not reach phase=Synced within {timeout}s (last {last!r})"
+    )
+
+
+def _airflow_get(get_callable, *args):
+    """Return the resource JSON from Airflow, or None if it does not exist.
+
+    Uses _preload_content=False so the raw response is returned without
+    deserializing against the v1 client models (works for v2 responses too).
+    """
+    try:
+        resp = get_callable(*args, _preload_content=False)
+    except NotFoundException:
+        return None
+    return json.loads(resp.data)
+
+
+def _assert_absent(get_callable, *args, timeout=45):
+    """Poll Airflow directly until the resource is gone (NotFound)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _airflow_get(get_callable, *args) is None:
+            return
+        time.sleep(2)
+    raise AssertionError(f"{args} still present in Airflow after {timeout}s")
+
 
 def test_operator():
-    with KopfRunner(["run", "-A", "--verbose", "main.py"]) as runner:  # noqa: F841
+    with KopfRunner(["run", "-A", "--verbose", "main.py"]) as runner:
         # create CRDs
         subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
-        time.sleep(1)  # give it some time to react and to sleep and to retry
+        time.sleep(1)
 
-        # create, update, delete Variable
+        # Variable: create -> Synced + exists in Airflow with value;
+        # update -> value changes; delete -> gone from Airflow.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/variable.yaml", shell=True, check=True
         )
-        time.sleep(3)  # give it some time to react
+        _wait_for_synced("variable", "example-variable")
+        var = _airflow_get(variable_api.get_variable, "example-variable")
+        assert (
+            var is not None and var.get("value") == "s3://example-bucket/data/path"
+        ), var
 
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/variable-updated.yaml",
             shell=True,
             check=True,
         )
-        time.sleep(3)  # give it some time to react
+        time.sleep(5)
+        updated = _airflow_get(variable_api.get_variable, "example-variable")
+        assert updated.get("value") != "s3://example-bucket/data/path", updated
 
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/variable.yaml", shell=True, check=True
         )
-        time.sleep(1)  # give it some time to react and to sleep and to retry
+        _assert_absent(variable_api.get_variable, "example-variable")
 
-        # create, update, delete Connection
+        # Connection: create -> Synced + exists; delete -> gone.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/connection.yaml", shell=True, check=True
         )
-        time.sleep(3)  # give it some time to react and to sleep and to retry
+        _wait_for_synced("connection", "example-connection")
+        assert _airflow_get(connection_api.get_connection, "example-connection")
 
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/connection.yaml", shell=True, check=True
         )
-        time.sleep(1)  # give it some time to react and to sleep and to retry
+        _assert_absent(connection_api.get_connection, "example-connection")
 
-        # create, update, delete Pool
+        # Pool: create -> Synced + exists; update; delete -> gone.
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/pool.yaml", shell=True, check=True
         )
-        time.sleep(3)  # give it some time to react and to sleep and to retry
+        _wait_for_synced("pool", "example-pool")
+        assert _airflow_get(pool_api.get_pool, "example-pool")
+
         subprocess.run(
             f"kubectl apply -f {TEST_PATH}/pool-updated.yaml",
             shell=True,
             check=True,
         )
-        time.sleep(3)  # give it some time to react and to sleep and to retry
+        time.sleep(5)
+
         subprocess.run(
             f"kubectl delete -f {TEST_PATH}/pool.yaml", shell=True, check=True
         )
-        time.sleep(1)  # give it some time to react and to sleep and to retry
+        _assert_absent(pool_api.get_pool, "example-pool")
 
         # delete CRDs
         subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)
+
+    # The operator must not have abandoned a delete (finalizer released while
+    # the Airflow object may still exist).
+    assert "Giving up after" not in runner.stdout, (
+        "operator gave up on a delete; the Airflow backend rejected the request"
+    )

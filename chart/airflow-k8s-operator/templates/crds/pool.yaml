@@ -18,6 +18,13 @@ spec:
       storage: true
       subresources:
         status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Message
+          type: string
+          jsonPath: .status.message
       schema:
         openAPIV3Schema:
           type: object
@@ -36,3 +43,13 @@ spec:
                 description:
                   type: string
                   description: The pool description.
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              properties:
+                phase:
+                  type: string
+                  description: Last reconciliation outcome (Synced or Error).
+                message:
+                  type: string
+                  description: Human-readable detail about the last reconciliation.
