@@ -30,20 +30,24 @@ def _phase(kind, name):
     return result.stdout.strip()
 
 
-def _wait_for_synced(kind, name, timeout=180):
-    """Wait until the operator reports it reconciled the resource against
-    Airflow (status.phase=Synced). The operator retries until Airflow is
-    ready, so this also absorbs Airflow's startup time."""
+def _wait_for_phase(kind, name, expected, timeout=180):
+    """Wait until the CR's status.phase reaches `expected`. The operator retries
+    until Airflow is ready, so a Synced wait also absorbs Airflow startup."""
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
         last = _phase(kind, name)
-        if last == "Synced":
+        if last == expected:
             return
         time.sleep(3)
     raise AssertionError(
-        f"{kind}/{name} did not reach phase=Synced within {timeout}s (last {last!r})"
+        f"{kind}/{name} did not reach phase={expected} within {timeout}s "
+        f"(last {last!r})"
     )
+
+
+def _wait_for_synced(kind, name, timeout=180):
+    _wait_for_phase(kind, name, "Synced", timeout)
 
 
 def _airflow_get(get_callable, *args):
@@ -139,3 +143,35 @@ def test_operator():
     assert "Giving up after" not in runner.stdout, (
         "operator gave up on a delete; the Airflow backend rejected the request"
     )
+
+
+def test_failed_create_surfaces_error():
+    """A reconcile failure must be visible and must not create the resource.
+
+    Uses a Variable whose secretRef points at a nonexistent Secret, so the
+    operator fails before ever calling Airflow -- independent of Airflow.
+    """
+    with KopfRunner(["run", "-A", "--verbose", "main.py"]):
+        subprocess.run(f"kubectl apply -f {CRD_PATH}/", shell=True, check=True)
+        time.sleep(1)
+
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/variable-missing-secret.yaml",
+            shell=True,
+            check=True,
+        )
+
+        # The failure is surfaced on the CR ...
+        _wait_for_phase("variable", "broken-variable", "Error", timeout=90)
+        # ... and nothing was created in Airflow.
+        assert _airflow_get(variable_api.get_variable, "broken-variable") is None
+
+        # A failed-create CR still deletes cleanly (finalizer released, no wedge).
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/variable-missing-secret.yaml",
+            shell=True,
+            check=True,
+            timeout=120,
+        )
+
+        subprocess.run(f"kubectl delete -f {CRD_PATH}/", shell=True, check=True)

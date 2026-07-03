@@ -24,4 +24,5 @@ jobs:
           uv run pytest tests/
           --ignore=tests/operator_test.py
           --ignore=tests/variable_test.py
+          --ignore=tests/giveup_test.py
           -v
