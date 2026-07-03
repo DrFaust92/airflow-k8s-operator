@@ -1,8 +1,77 @@
+{{- if eq .Values.scope "namespaced" }}
+# Namespaced operator (multi-tenant): only cluster-scoped read needed is CRD
+# discovery + namespace observation; everything else is confined to the release
+# namespace via a Role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "airflow-k8s-operator.fullname" . }}-crd-reader
+  labels:
+    {{- include "airflow-k8s-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [list, watch]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [list, watch]
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "airflow-k8s-operator.fullname" . }}-crd-reader
+  labels:
+    {{- include "airflow-k8s-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "airflow-k8s-operator.fullname" . }}-crd-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "airflow-k8s-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "airflow-k8s-operator.fullname" . }}-role
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "airflow-k8s-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [list, watch, get, create, patch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [airflow.drfaust92]
+    resources: [variables, variables/status, connections, connections/status, pools, pools/status]
+    verbs: [list, watch, get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "airflow-k8s-operator.fullname" . }}-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "airflow-k8s-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "airflow-k8s-operator.fullname" . }}-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "airflow-k8s-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+# Cluster-wide operator (default): one operator watches all namespaces.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: {{ include "airflow-k8s-operator.fullname" . }}-cluster-role
+  labels:
+    {{- include "airflow-k8s-operator.labels" . | nindent 4 }}
 rules:
   - apiGroups: [apiextensions.k8s.io]
     resources: [customresourcedefinitions]
@@ -24,6 +93,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: {{ include "airflow-k8s-operator.fullname" . }}-cluster-rolebinding
+  labels:
+    {{- include "airflow-k8s-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -32,3 +103,4 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "airflow-k8s-operator.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+{{- end }}

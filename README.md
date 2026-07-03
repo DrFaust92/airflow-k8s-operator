@@ -230,6 +230,37 @@ Install the operator from an OCI registry.
 helm upgrade --install airflow-operator oci://ghcr.io/drfaust92/charts/airflow-k8s-operator --set operator.airflowHost=airflow.example.com --namespace airflow-operator --create-namespace
 ```
 
+### Multi-tenancy (multiple Airflows on one cluster)
+
+By default the operator runs **cluster-wide** (`scope: cluster`): one instance
+watches every namespace and talks to a single Airflow. To run **multiple
+Airflows on the same cluster**, deploy one operator per namespace with
+`scope: namespaced` — each release watches only its own namespace (with
+namespaced RBAC) and points at its own `operator.airflowHost`.
+
+The CRDs are cluster-scoped and shared, so install them once and skip them on
+the tenant releases (`crds.create=false`):
+
+```bash
+# 1) Install the CRDs once (any release with crds.create=true does this;
+#    they carry helm.sh/resource-policy: keep so they survive uninstalls).
+
+# 2) One release per tenant namespace, each with its own Airflow:
+helm upgrade --install airflow-tenant-a oci://ghcr.io/drfaust92/charts/airflow-k8s-operator \
+    --namespace tenant-a --create-namespace \
+    --set scope=namespaced --set crds.create=false \
+    --set operator.airflowHost=http://airflow-a.tenant-a:8080
+
+helm upgrade --install airflow-tenant-b oci://ghcr.io/drfaust92/charts/airflow-k8s-operator \
+    --namespace tenant-b --create-namespace \
+    --set scope=namespaced --set crds.create=false \
+    --set operator.airflowHost=http://airflow-b.tenant-b:8080
+```
+
+A `Variable`/`Connection`/`Pool` created in `tenant-a` is reconciled only by
+that namespace's operator, against Airflow A. Namespaced operators run with
+`--standalone`, so they don't peer with (or pause) one another.
+
 ### AWS (MWAA) on EKS
 
 Configure the operator to authenticate against MWAA using IRSA and environment variables:

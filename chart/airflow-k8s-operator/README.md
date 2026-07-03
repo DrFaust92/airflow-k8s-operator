@@ -1,6 +1,6 @@
 # airflow-k8s-operator
 
-![Version: 0.10.0](https://img.shields.io/badge/Version-0.10.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0](https://img.shields.io/badge/AppVersion-0.4.0-informational?style=flat-square)
+![Version: 0.12.0](https://img.shields.io/badge/Version-0.12.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0](https://img.shields.io/badge/AppVersion-0.4.0-informational?style=flat-square)
 
 A Helm chart for Kubernetes Airflow Operator
 
@@ -16,6 +16,7 @@ A Helm chart for Kubernetes Airflow Operator
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` |  |
+| crds.create | bool | `true` | install the CRDs with this release. CRDs are cluster-scoped and shared, so for multi-tenant deploys install them once (e.g. the first release) and set this to false on additional tenant releases. |
 | dnsConfig | map | `{}` | dnsConfig for the pod |
 | env | list | `[]` | environment variables for the container (name/value entries) |
 | envFrom | list | `[]` | envFrom sources (configMapRef or secretRef) |
@@ -47,6 +48,7 @@ A Helm chart for Kubernetes Airflow Operator
 | port | int | `8080` | metrics port for the operator |
 | resources | object | `{}` |  |
 | revisionHistoryLimit | int | `10` | number of old ReplicaSets to retain to allow rollback |
+| scope | string | `"cluster"` | deployment scope: "cluster" (one operator watches all namespaces, ClusterRole RBAC) or "namespaced" (operator watches only its release namespace with namespaced RBAC). Use "namespaced" for multi-tenancy: deploy one release per tenant namespace, each pointing at its own Airflow (operator.airflowHost). |
 | securityContext | map | `{}` | container security context |
 | serviceAccount.annotations | map | `{}` | annotations to add to the service account Annotations to add to the service account. |
 | serviceAccount.automount | bool | `true` | whether to automount the service account token Automatically mount a ServiceAccount's API credentials? |

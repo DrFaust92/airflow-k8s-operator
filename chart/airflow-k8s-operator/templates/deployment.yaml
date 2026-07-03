@@ -41,7 +41,16 @@ spec:
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["-v", "--log-format={{ .Values.operator.logFormat }}", "--liveness={{ tpl .Values.operator.livenessProbeAddress . }}"]
+          args:
+            - "-v"
+            - "--log-format={{ .Values.operator.logFormat }}"
+            - "--liveness={{ tpl .Values.operator.livenessProbeAddress . }}"
+            {{- if eq .Values.scope "namespaced" }}
+            # Watch only this release's namespace, and skip peering so per-tenant
+            # operators don't pause each other.
+            - "--namespace={{ .Release.Namespace }}"
+            - "--standalone"
+            {{- end }}
           ports:
             - name: metrics
               containerPort: {{ .Values.metricsPort }}

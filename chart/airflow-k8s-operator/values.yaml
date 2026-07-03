@@ -20,6 +20,18 @@ nameOverride: ""
 # -- (string) full chart name override
 fullnameOverride: ""
 
+# -- (string) deployment scope: "cluster" (one operator watches all namespaces,
+# ClusterRole RBAC) or "namespaced" (operator watches only its release namespace
+# with namespaced RBAC). Use "namespaced" for multi-tenancy: deploy one release
+# per tenant namespace, each pointing at its own Airflow (operator.airflowHost).
+scope: cluster
+
+crds:
+  # -- (bool) install the CRDs with this release. CRDs are cluster-scoped and
+  # shared, so for multi-tenant deploys install them once (e.g. the first
+  # release) and set this to false on additional tenant releases.
+  create: true
+
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
 serviceAccount:
   # -- (bool) whether to automount the service account token
