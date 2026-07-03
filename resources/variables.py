@@ -25,7 +25,9 @@ def _build_variable(name, spec, namespace, logger) -> Variable:
 def create_variable(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Variable: {name}")
     with track("variable", "create", logger, patch=patch):
-        variables_api.post_variables(_build_variable(name, spec, namespace, logger))
+        variables_api.post_variables(
+            _build_variable(name, spec, namespace, logger), _preload_content=False
+        )
         MANAGED_RESOURCES.labels(resource_type="variable").inc()
     return {"message": f"Variable {name} created successfully."}
 
@@ -44,10 +46,12 @@ def reconcile_variable(spec, name, namespace, logger, patch, **kwargs):
     with track("variable", "update", logger, patch=patch):
         variable = _build_variable(name, spec, namespace, logger)
         try:
-            variables_api.patch_variable(variable_key=name, variable=variable)
+            variables_api.patch_variable(
+                variable_key=name, variable=variable, _preload_content=False
+            )
         except NotFoundException:
             logger.info(f"Variable {name} missing in Airflow; recreating")
-            variables_api.post_variables(variable)
+            variables_api.post_variables(variable, _preload_content=False)
     return {"message": f"Variable {name} reconciled successfully."}
 
 
@@ -66,7 +70,7 @@ def delete_variable(name, namespace, logger, retry=0, **kwargs):
         max_retries=DELETE_MAX_RETRIES,
     ):
         try:
-            variables_api.delete_variable(variable_key=name)
+            variables_api.delete_variable(variable_key=name, _preload_content=False)
         except NotFoundException:
             logger.info(f"Variable {name} already absent in Airflow")
         MANAGED_RESOURCES.labels(resource_type="variable").dec()

@@ -45,7 +45,7 @@ def create_connection(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Connection: {name}")
     with track("connection", "create", logger, patch=patch):
         connections_api.post_connection(
-            _build_connection(name, spec, namespace, logger)
+            _build_connection(name, spec, namespace, logger), _preload_content=False
         )
         MANAGED_RESOURCES.labels(resource_type="connection").inc()
     return {"message": f"Connection {name} created successfully."}
@@ -65,10 +65,12 @@ def reconcile_connection(spec, name, namespace, logger, patch, **kwargs):
     with track("connection", "update", logger, patch=patch):
         connection = _build_connection(name, spec, namespace, logger)
         try:
-            connections_api.patch_connection(connection_id=name, connection=connection)
+            connections_api.patch_connection(
+                connection_id=name, connection=connection, _preload_content=False
+            )
         except NotFoundException:
             logger.info(f"Connection {name} missing in Airflow; recreating")
-            connections_api.post_connection(connection)
+            connections_api.post_connection(connection, _preload_content=False)
     return {"message": f"Connection {name} reconciled successfully."}
 
 
@@ -89,7 +91,9 @@ def delete_connection(name, namespace, logger, retry=0, **kwargs):
         max_retries=DELETE_MAX_RETRIES,
     ):
         try:
-            connections_api.delete_connection(connection_id=name)
+            connections_api.delete_connection(
+                connection_id=name, _preload_content=False
+            )
         except NotFoundException:
             logger.info(f"Connection {name} already absent in Airflow")
         MANAGED_RESOURCES.labels(resource_type="connection").dec()

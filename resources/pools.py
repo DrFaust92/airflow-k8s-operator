@@ -26,7 +26,7 @@ def _build_pool(name, spec) -> Pool:
 def create_pool(spec, name, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Pool: {name}")
     with track("pool", "create", logger, patch=patch):
-        pools_api.post_pool(_build_pool(name, spec))
+        pools_api.post_pool(_build_pool(name, spec), _preload_content=False)
         MANAGED_RESOURCES.labels(resource_type="pool").inc()
     return {"message": f"Pool {name} created successfully."}
 
@@ -45,10 +45,10 @@ def reconcile_pool(spec, name, logger, patch, **kwargs):
     with track("pool", "update", logger, patch=patch):
         pool = _build_pool(name, spec)
         try:
-            pools_api.patch_pool(pool_name=name, pool=pool)
+            pools_api.patch_pool(pool_name=name, pool=pool, _preload_content=False)
         except NotFoundException:
             logger.info(f"Pool {name} missing in Airflow; recreating")
-            pools_api.post_pool(pool)
+            pools_api.post_pool(pool, _preload_content=False)
     return {"message": f"Pool {name} reconciled successfully."}
 
 
@@ -62,7 +62,7 @@ def delete_pool(name, logger, retry=0, **kwargs):
         "pool", "delete", logger, delay=10, retry=retry, max_retries=DELETE_MAX_RETRIES
     ):
         try:
-            pools_api.delete_pool(pool_name=name)
+            pools_api.delete_pool(pool_name=name, _preload_content=False)
         except NotFoundException:
             logger.info(f"Pool {name} already absent in Airflow")
         MANAGED_RESOURCES.labels(resource_type="pool").dec()

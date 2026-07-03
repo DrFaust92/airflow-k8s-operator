@@ -135,6 +135,7 @@ dependencies = [
     { name = "kopf" },
     { name = "kubernetes" },
     { name = "prometheus-client" },
+    { name = "requests" },
 ]
 
 [package.dev-dependencies]
@@ -153,6 +154,7 @@ requires-dist = [
     { name = "kopf", specifier = ">=1.44.6" },
     { name = "kubernetes", specifier = ">=36.0.2" },
     { name = "prometheus-client", specifier = "==0.25.0" },
+    { name = "requests", specifier = ">=2.32.5" },
 ]
 
 [package.metadata.requires-dev]
