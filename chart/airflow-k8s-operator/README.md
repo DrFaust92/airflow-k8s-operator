@@ -1,6 +1,6 @@
 # airflow-k8s-operator
 
-![Version: 0.12.0](https://img.shields.io/badge/Version-0.12.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0](https://img.shields.io/badge/AppVersion-0.4.0-informational?style=flat-square)
+![Version: 0.14.0](https://img.shields.io/badge/Version-0.14.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0](https://img.shields.io/badge/AppVersion-0.6.0-informational?style=flat-square)
 
 A Helm chart for Kubernetes Airflow Operator
 
@@ -10,6 +10,12 @@ A Helm chart for Kubernetes Airflow Operator
 | ---- | ------ | --- |
 | DrFaust92 |  | <https://github.com/DrFaust92> |
 | KyriosGN0 |  | <https://github.com/KyriosGN0> |
+
+## Requirements
+
+| Repository | Name | Version |
+|------------|------|---------|
+| file://../airflow-k8s-operator-crds | airflow-k8s-operator-crds | >= 0.1.0 |
 
 ## Values
 

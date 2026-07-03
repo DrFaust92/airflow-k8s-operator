@@ -214,3 +214,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Helm vendored subchart archives (regenerated via `helm dependency build`)
+chart/airflow-k8s-operator/charts/*.tgz

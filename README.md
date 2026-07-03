@@ -178,10 +178,10 @@ This deploys the necessary resources to your local kind cluster for testing.
 1. Deploy the Custom Resource Definitions (CRDs):
 
 ```bash
-kubectl apply -f chart/airflow-k8s-operator/templates/crds/
+helm template chart/airflow-k8s-operator-crds | kubectl apply -f -
 ```
 
-This applies the Airflow Variable and Connection CRDs to your cluster, enabling you to manage Airflow resources using Kubernetes custom resources.
+This applies the Airflow Variable, Connection, and Pool CRDs to your cluster, enabling you to manage Airflow resources using Kubernetes custom resources. (The CRDs live in their own `airflow-k8s-operator-crds` chart.)
 
 1. Deploy a Custom Resource:
 
@@ -238,14 +238,16 @@ Airflows on the same cluster**, deploy one operator per namespace with
 `scope: namespaced` — each release watches only its own namespace (with
 namespaced RBAC) and points at its own `operator.airflowHost`.
 
-The CRDs are cluster-scoped and shared, so install them once and skip them on
-the tenant releases (`crds.create=false`):
+The CRDs are cluster-scoped and shared, and ship as their own
+`airflow-k8s-operator-crds` chart. Install them once, then deploy each tenant
+operator with `crds.create=false`:
 
 ```bash
-# 1) Install the CRDs once (any release with crds.create=true does this;
-#    they carry helm.sh/resource-policy: keep so they survive uninstalls).
+# 1) Install the shared CRDs once (cluster-admin).
+helm upgrade --install airflow-crds oci://ghcr.io/drfaust92/charts/airflow-k8s-operator-crds
 
-# 2) One release per tenant namespace, each with its own Airflow:
+# 2) One operator release per tenant namespace, each with its own Airflow.
+#    crds.create=false skips the bundled CRD subchart (installed in step 1).
 helm upgrade --install airflow-tenant-a oci://ghcr.io/drfaust92/charts/airflow-k8s-operator \
     --namespace tenant-a --create-namespace \
     --set scope=namespaced --set crds.create=false \
@@ -329,7 +331,7 @@ The controller is implemented as a reconciliation loop: it watches the Variable 
 - Authentication: the operator supports multiple authentication methods. Google Cloud authentication is enabled via the `USE_GOOGLE_AUTH` environment variable and uses Application Default Credentials. Basic auth is supported through `AIRFLOW_USERNAME` and `AIRFLOW_PASSWORD`. The `config/` helpers centralize environment parsing and token handling.
 - Reconciliation interval: the frequency with which the operator reconciles resources with the Airflow instance is controlled by the `OPERATOR_RECONCILE_INTERVAL` environment variable. The default value is 300 seconds (5 minutes). You can adjust this variable to change how often the operator checks and updates Airflow resources.
 - Error handling: transient HTTP errors are retried; permanent errors are surfaced to the Kubernetes resource status so users can see reconciliation failures.
-- CRD design: the CRD YAML files under `chart/airflow-k8s-operator/templates/crds/` define the schema for `Variable` and `Connection` custom resources. Tests in `tests/` contain minimal example CRs that can be applied to a cluster for end-to-end verification.
+- CRD design: the CRD YAML files under `chart/airflow-k8s-operator-crds/templates/` define the schema for `Variable`, `Connection`, and `Pool` custom resources. Tests in `tests/` contain minimal example CRs that can be applied to a cluster for end-to-end verification.
 
 ## Contributing
 

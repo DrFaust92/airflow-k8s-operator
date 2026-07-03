@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - 'chart/airflow-k8s-operator/**'
+      - 'chart/**'
 
 jobs:
   release:
@@ -34,8 +34,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push chart to GHCR
+      - name: Push charts to GHCR
         run: |
+          set -euo pipefail
+          OWNER=${GITHUB_REPOSITORY_OWNER,,}
+          # CRD chart first (standalone, reusable). chart-releaser skips existing
+          # versions, and helm push is idempotent for an already-published tag.
+          helm package chart/airflow-k8s-operator-crds
+          helm push airflow-k8s-operator-crds-*.tgz oci://ghcr.io/${OWNER}/charts
+          # Operator chart: vendor the CRD subchart, then package + push.
+          helm dependency build chart/airflow-k8s-operator
           helm package chart/airflow-k8s-operator
-          helm push airflow-k8s-operator-*.tgz oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts
+          # [0-9] so this glob does not also match the -crds- archive.
+          helm push airflow-k8s-operator-[0-9]*.tgz oci://ghcr.io/${OWNER}/charts
 
