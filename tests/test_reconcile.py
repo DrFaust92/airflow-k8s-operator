@@ -3,7 +3,11 @@ from types import SimpleNamespace
 
 import kopf
 import pytest
-from airflow_client.client.exceptions import ApiException
+from airflow_client.client.exceptions import (
+    ApiException,
+    ForbiddenException,
+    UnauthorizedException,
+)
 from prometheus_client import REGISTRY
 
 from config.reconcile import track
@@ -151,3 +155,25 @@ def test_retryable_status_raises_temporary_error():
     with pytest.raises(kopf.TemporaryError):
         with track("unittest", "create", logger):
             raise ApiException(status=503, reason="unavailable")
+
+
+def test_unauthorized_is_retryable_and_marks_error():
+    # 401 (bad/missing credentials) is deliberately retryable so the operator
+    # self-heals once the credentials/secret are fixed -- surfaced as Error but
+    # NOT downgraded to a PermanentError that would park the resource.
+    patch = _patch()
+    with pytest.raises(kopf.TemporaryError):
+        with track("unittest", "create", logger, patch=patch):
+            raise UnauthorizedException(status=401, reason="Unauthorized")
+    assert patch.status["phase"] == "Error"
+
+
+def test_forbidden_is_retryable_and_marks_error():
+    # 403 is also retryable: on Airflow 3 a bad/expired JWT surfaces as
+    # 403 "Invalid JWT", which the client refresh (or a secret rotation) can
+    # resolve, so it must not be treated as permanent.
+    patch = _patch()
+    with pytest.raises(kopf.TemporaryError):
+        with track("unittest", "create", logger, patch=patch):
+            raise ForbiddenException(status=403, reason="Forbidden")
+    assert patch.status["phase"] == "Error"

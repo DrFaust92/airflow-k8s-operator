@@ -76,6 +76,16 @@ def _assert_absent(get_callable, *args, timeout=45):
     raise AssertionError(f"{args} still present in Airflow after {timeout}s")
 
 
+def _wait_for_present(get_callable, *args, timeout=60):
+    """Poll Airflow directly until the resource exists again."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _airflow_get(get_callable, *args) is not None:
+            return
+        time.sleep(2)
+    raise AssertionError(f"{args} not present in Airflow within {timeout}s")
+
+
 def test_operator():
     with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         # create CRDs
@@ -137,6 +147,34 @@ def test_operator():
             f"kubectl delete -f {TEST_PATH}/pool.yaml", shell=True, check=True
         )
         _assert_absent(pool_api.get_pool, "example-pool")
+
+        # Drift-heal (out-of-band deletion): if the Airflow object is deleted
+        # behind the operator's back, reconciliation must recreate it. Create
+        # the variable, delete it directly against the Airflow API, then nudge
+        # the CR (annotation bump) to fire the reconcile/update handler -- the
+        # same code path the timer runs on its schedule -- and assert the
+        # variable reappears in Airflow.
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/variable.yaml", shell=True, check=True
+        )
+        _wait_for_synced("variable", "example-variable")
+        assert _airflow_get(variable_api.get_variable, "example-variable") is not None
+
+        variable_api.delete_variable("example-variable", _preload_content=False)
+        _assert_absent(variable_api.get_variable, "example-variable")
+
+        subprocess.run(
+            "kubectl annotate variable example-variable "
+            "airflow.drfaust92/drift-heal-test=1 --overwrite",
+            shell=True,
+            check=True,
+        )
+        _wait_for_present(variable_api.get_variable, "example-variable")
+
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/variable.yaml", shell=True, check=True
+        )
+        _assert_absent(variable_api.get_variable, "example-variable")
 
         # 409 adopt: pre-create a variable in Airflow, then a CR with the same
         # name must be adopted (create -> 409 -> patch) and reconciled to the

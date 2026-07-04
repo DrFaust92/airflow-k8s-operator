@@ -83,6 +83,13 @@ def track(
 
 # HTTP statuses that indicate the request itself is invalid and will keep
 # failing until the spec changes -- no point retrying.
+#
+# Auth failures (401 Unauthorized / 403 Forbidden) are deliberately NOT here:
+# they are treated as temporary so the operator surfaces phase=Error but keeps
+# retrying, and self-heals once the credentials/secret are fixed out-of-band.
+# This also matters on Airflow 3, which returns 403 "Invalid JWT" for an
+# expired/invalid token -- parking on that would wedge resources on a transient
+# token problem the JwtAuthApiClient refresh (or a secret rotation) resolves.
 _PERMANENT_STATUSES = frozenset({400, 422})
 
 
