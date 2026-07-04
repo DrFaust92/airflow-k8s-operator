@@ -80,6 +80,9 @@ spec:
                 extra:
                   type: string
                   description: The connection extra field.
+                teamName:
+                  type: string
+                  description: "Team for Airflow 3 multi-team mode. Requires multi-team mode enabled and the team to exist in Airflow, otherwise the API may reject the resource. Ignored on Airflow 2."
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

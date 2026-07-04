@@ -53,6 +53,9 @@ spec:
                 description:
                   type: string
                   description: The variable description.
+                teamName:
+                  type: string
+                  description: "Team for Airflow 3 multi-team mode. Requires multi-team mode enabled and the team to exist in Airflow, otherwise the API may reject the resource. Ignored on Airflow 2."
               oneOf:
                 - required:
                     - value

@@ -3,7 +3,11 @@ from airflow_client.client.api.connection_api import ConnectionApi
 from airflow_client.client.exceptions import ApiException, NotFoundException
 from airflow_client.client.model.connection import Connection
 
-from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL_DELAY
+from config.base import (
+    IS_API_V2,
+    OPERATOR_RECONCILE_INTERVAL,
+    OPERATOR_RECONCILE_INTERVAL_DELAY,
+)
 from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
@@ -34,6 +38,8 @@ def _build_connection(name, spec, namespace, logger) -> Connection:
         "port": spec.get("port"),
         "schema": spec.get("schema"),
         "extra": spec.get("extra"),
+        # team_name is an Airflow 3 (v2) multi-team field; only send it there.
+        "team_name": spec.get("teamName") if IS_API_V2 else None,
     }
     # The airflow client model rejects None for optional str fields, so only
     # pass the fields that are actually set.

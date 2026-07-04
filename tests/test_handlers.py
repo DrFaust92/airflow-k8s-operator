@@ -164,3 +164,57 @@ def test_reconcile_pool_recreates_when_missing(monkeypatch):
 
     api.patch_pool.assert_called_once()
     api.post_pool.assert_called_once()
+
+
+# --- team_name (Airflow 3 / v2 multi-team field) --------------------------
+
+
+def test_build_connection_includes_team_name_on_v2(monkeypatch):
+    monkeypatch.setattr(connections, "IS_API_V2", True)
+    conn = connections._build_connection(
+        "c1", {**CONN_SPEC, "teamName": "team-a"}, "ns", logger
+    )
+    assert conn.to_dict().get("team_name") == "team-a"
+
+
+def test_build_connection_omits_team_name_on_v1(monkeypatch):
+    monkeypatch.setattr(connections, "IS_API_V2", False)
+    conn = connections._build_connection(
+        "c1", {**CONN_SPEC, "teamName": "team-a"}, "ns", logger
+    )
+    assert "team_name" not in conn.to_dict()
+
+
+def test_build_variable_includes_team_name_on_v2(monkeypatch):
+    monkeypatch.setattr(variables, "IS_API_V2", True)
+    var = variables._build_variable(
+        "v1", {**VAR_SPEC, "teamName": "team-a"}, "ns", logger
+    )
+    assert var.to_dict().get("team_name") == "team-a"
+
+
+def test_build_pool_includes_team_name_on_v2(monkeypatch):
+    monkeypatch.setattr(pools, "IS_API_V2", True)
+    pool = pools._build_pool("p1", {**POOL_SPEC, "teamName": "team-a"})
+    assert pool.to_dict().get("team_name") == "team-a"
+
+
+def test_create_connection_rejected_team_name_is_permanent(monkeypatch):
+    # Multi-team validation (or a missing team) makes Airflow reject the
+    # request with a 422. The operator must surface that as phase=Error and not
+    # loop on it -- not silently succeed.
+    monkeypatch.setattr(connections, "IS_API_V2", True)
+    api = MagicMock()
+    api.post_connection.side_effect = ApiException(status=422, reason="unknown team")
+    monkeypatch.setattr(connections, "connections_api", api)
+    patch = _patch()
+
+    with pytest.raises(kopf.PermanentError):
+        connections.create_connection(
+            spec={**CONN_SPEC, "teamName": "ghost-team"},
+            name="c1",
+            namespace="ns",
+            logger=logger,
+            patch=patch,
+        )
+    assert patch.status["phase"] == "Error"
