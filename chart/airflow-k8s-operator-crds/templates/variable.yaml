@@ -53,6 +53,9 @@ spec:
                 description:
                   type: string
                   description: The variable description.
+                teamName:
+                  type: string
+                  description: Team name (Airflow 3 multi-team deployments only; ignored on Airflow 2).
               oneOf:
                 - required:
                     - value

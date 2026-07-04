@@ -19,7 +19,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 Currently supports the following Airflow versions:
 
 - Airflow 2.0+ (using the Airflow v1 REST API) - tested on Airflow 2.10.0
-- Airflow 3.0+ (using the Airflow v2 REST API) - tested on Airflow 3.0.2
+- Airflow 3.0+ (using the Airflow v2 REST API) - tested on Airflow 3.2.2
 
 ## Authentication
 

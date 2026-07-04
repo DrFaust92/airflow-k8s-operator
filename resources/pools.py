@@ -3,7 +3,11 @@ from airflow_client.client.api.pool_api import PoolApi
 from airflow_client.client.exceptions import ApiException, NotFoundException
 from airflow_client.client.model.pool import Pool
 
-from config.base import OPERATOR_RECONCILE_INTERVAL, OPERATOR_RECONCILE_INTERVAL_DELAY
+from config.base import (
+    IS_API_V2,
+    OPERATOR_RECONCILE_INTERVAL,
+    OPERATOR_RECONCILE_INTERVAL_DELAY,
+)
 from config.client import api_client
 from config.metrics import MANAGED_RESOURCES
 from config.reconcile import DELETE_MAX_RETRIES, track
@@ -17,6 +21,8 @@ def _build_pool(name, spec) -> Pool:
         "description": spec.get("description"),
         "include_deferred": spec.get("includeDeferred", False),
         "slots": spec.get("slots"),
+        # team_name is an Airflow 3 (v2) multi-team field; only send it there.
+        "team_name": spec.get("teamName") if IS_API_V2 else None,
     }
     # The airflow client model rejects None for optional fields.
     return Pool(**{k: v for k, v in fields.items() if v is not None})

@@ -45,6 +45,9 @@ spec:
                 description:
                   type: string
                   description: The pool description.
+                teamName:
+                  type: string
+                  description: Team name (Airflow 3 multi-team deployments only; ignored on Airflow 2).
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true

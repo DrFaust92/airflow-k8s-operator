@@ -86,7 +86,7 @@ jobs:
       - name: Install Airflow
         run: |
           # Airflow v3 (v2 API)
-          helm upgrade --install airflow apache-airflow/airflow --version 1.18.0 \
+          helm upgrade --install airflow apache-airflow/airflow --version 1.22.0 \
             --set postgresql.image.repository=bitnamilegacy/postgresql \
             --set postgresql.image.tag=16.1.0-debian-11-r15 \
             --set executor=KubernetesExecutor \
