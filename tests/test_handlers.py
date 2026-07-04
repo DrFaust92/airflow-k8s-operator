@@ -197,3 +197,24 @@ def test_build_pool_includes_team_name_on_v2(monkeypatch):
     monkeypatch.setattr(pools, "IS_API_V2", True)
     pool = pools._build_pool("p1", {**POOL_SPEC, "teamName": "team-a"})
     assert pool.to_dict().get("team_name") == "team-a"
+
+
+def test_create_connection_rejected_team_name_is_permanent(monkeypatch):
+    # Multi-team validation (or a missing team) makes Airflow reject the
+    # request with a 422. The operator must surface that as phase=Error and not
+    # loop on it -- not silently succeed.
+    monkeypatch.setattr(connections, "IS_API_V2", True)
+    api = MagicMock()
+    api.post_connection.side_effect = ApiException(status=422, reason="unknown team")
+    monkeypatch.setattr(connections, "connections_api", api)
+    patch = _patch()
+
+    with pytest.raises(kopf.PermanentError):
+        connections.create_connection(
+            spec={**CONN_SPEC, "teamName": "ghost-team"},
+            name="c1",
+            namespace="ns",
+            logger=logger,
+            patch=patch,
+        )
+    assert patch.status["phase"] == "Error"

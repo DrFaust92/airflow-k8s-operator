@@ -47,7 +47,7 @@ spec:
                   description: The pool description.
                 teamName:
                   type: string
-                  description: Team name (Airflow 3 multi-team deployments only; ignored on Airflow 2).
+                  description: "Team for Airflow 3 multi-team mode. Requires multi-team mode enabled and the team to exist in Airflow, otherwise the API may reject the resource. Ignored on Airflow 2."
             status:
               type: object
               x-kubernetes-preserve-unknown-fields: true
