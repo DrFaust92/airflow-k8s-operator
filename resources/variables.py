@@ -12,20 +12,22 @@ from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
 from config.reconcile import DELETE_MAX_RETRIES, track
+from resources.schemas import VariableSpec
 
 variables_api = VariableApi(api_client=api_client)
 
 
 def _build_variable(name, spec, namespace, logger) -> Variable:
+    parsed = VariableSpec.model_validate(spec)
     # Value may be a direct value or resolved from a Kubernetes Secret; never
     # log the resolved value.
     var_value = resolve_value(spec, namespace, logger=logger)
     fields = {
         "key": name,
         "value": var_value,
-        "description": spec.get("description"),
+        "description": parsed.description,
         # team_name is an Airflow 3 (v2) multi-team field; only send it there.
-        "team_name": spec.get("teamName") if IS_API_V2 else None,
+        "team_name": parsed.team_name if IS_API_V2 else None,
     }
     # The airflow client model rejects None for optional str fields.
     return Variable(**{k: v for k, v in fields.items() if v is not None})

@@ -11,18 +11,20 @@ from config.base import (
 from config.client import api_client
 from config.metrics import MANAGED_RESOURCES
 from config.reconcile import DELETE_MAX_RETRIES, track
+from resources.schemas import PoolSpec
 
 pools_api = PoolApi(api_client=api_client)
 
 
 def _build_pool(name, spec) -> Pool:
+    parsed = PoolSpec.model_validate(spec)
     fields = {
         "name": name,
-        "description": spec.get("description"),
-        "include_deferred": spec.get("includeDeferred", False),
-        "slots": spec.get("slots"),
+        "description": parsed.description,
+        "include_deferred": parsed.include_deferred,
+        "slots": parsed.slots,
         # team_name is an Airflow 3 (v2) multi-team field; only send it there.
-        "team_name": spec.get("teamName") if IS_API_V2 else None,
+        "team_name": parsed.team_name if IS_API_V2 else None,
     }
     # The airflow client model rejects None for optional fields.
     return Pool(**{k: v for k, v in fields.items() if v is not None})

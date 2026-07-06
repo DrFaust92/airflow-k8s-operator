@@ -12,34 +12,36 @@ from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
 from config.reconcile import DELETE_MAX_RETRIES, track
+from resources.schemas import ConnectionSpec
 
 connections_api = ConnectionApi(api_client=api_client)
 
 
 def _build_connection(name, spec, namespace, logger) -> Connection:
-    # Resolve sensitive fields from direct values or secret references
+    parsed = ConnectionSpec.model_validate(spec)
+    # Resolve sensitive fields from direct values or secret references.
     login = (
-        resolve_value(spec.get("login"), namespace, logger=logger)
+        resolve_value(spec["login"], namespace, logger=logger)
         if spec.get("login")
         else None
     )
     password = (
-        resolve_value(spec.get("password"), namespace, logger=logger)
+        resolve_value(spec["password"], namespace, logger=logger)
         if spec.get("password")
         else None
     )
     fields = {
         "connection_id": name,
-        "conn_type": spec.get("connType"),
-        "description": spec.get("description"),
-        "host": spec.get("host"),
+        "conn_type": parsed.conn_type,
+        "description": parsed.description,
+        "host": parsed.host,
         "login": login,
         "password": password,
-        "port": spec.get("port"),
-        "schema": spec.get("schema"),
-        "extra": spec.get("extra"),
+        "port": parsed.port,
+        "schema": parsed.schema_,
+        "extra": parsed.extra,
         # team_name is an Airflow 3 (v2) multi-team field; only send it there.
-        "team_name": spec.get("teamName") if IS_API_V2 else None,
+        "team_name": parsed.team_name if IS_API_V2 else None,
     }
     # The airflow client model rejects None for optional str fields, so only
     # pass the fields that are actually set.
