@@ -7,10 +7,10 @@ description: |
 type: application
 
 # Chart version (Semantic Versioning). Bump when a CRD changes.
-version: 0.2.0
+version: 0.3.0
 
 # The operator app version these CRDs correspond to.
-appVersion: "0.6.0"
+appVersion: "0.7.0"
 
 maintainers:
   - name: DrFaust92

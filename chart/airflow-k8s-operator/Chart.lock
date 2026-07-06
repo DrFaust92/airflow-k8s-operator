@@ -1,6 +1,6 @@
 dependencies:
 - name: airflow-k8s-operator-crds
   repository: file://../airflow-k8s-operator-crds
-  version: 0.2.0
-digest: sha256:de613c56e910a797dc1a0d648eeff2d684d6a35719e1a4d88e73383fdc47a156
-generated: "2026-07-04T10:08:06.837781-04:00"
+  version: 0.3.0
+digest: sha256:358669537dc11ede7ce43461927fcf5a88b17d7dc5931d76aff2a7d694a4aede
+generated: "2026-07-06T17:30:02.420855-04:00"
