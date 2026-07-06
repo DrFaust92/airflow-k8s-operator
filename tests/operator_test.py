@@ -90,7 +90,18 @@ def test_operator():
     with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         # create CRDs
         subprocess.run(f"{CRD_RENDER} | kubectl apply -f -", shell=True, check=True)
-        time.sleep(1)
+        # Wait for the apiserver to finish initializing storage for the new CRD
+        # types before creating any CR. A fixed sleep races the apiserver: the
+        # operator's watch can hit "storage is (re)initializing" (429) and the
+        # create event is then missed, so the CR never reaches Synced.
+        subprocess.run(
+            "kubectl wait --for=condition=established --timeout=60s "
+            "crd/connections.airflow.drfaust92 "
+            "crd/pools.airflow.drfaust92 "
+            "crd/variables.airflow.drfaust92",
+            shell=True,
+            check=True,
+        )
 
         # Variable: create -> Synced + exists in Airflow with value;
         # update -> value changes; delete -> gone from Airflow.
