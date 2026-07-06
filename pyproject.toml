@@ -12,10 +12,12 @@ dependencies = [
     "prometheus-client==0.25.0",
     "boto3>=1.43.38",
     "requests>=2.32.5",
+    "pydantic>=2",
 ]
 
 [dependency-groups]
 dev = [
+    "pyyaml>=6",
     "ruff>=0.15.20",
 ]
 test = [
