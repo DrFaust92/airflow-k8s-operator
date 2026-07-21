@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "apache-airflow-client==2.10.0",
+    "apache-airflow-client==3.3.0",
     "kopf>=1.44.6",
     "google-auth[requests]>=2.55.1",
     "kubernetes>=36.0.2",
