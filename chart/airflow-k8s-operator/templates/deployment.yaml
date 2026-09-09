@@ -63,6 +63,10 @@ spec:
           env:
             - name: AIRFLOW_HOST
               value: {{ tpl .Values.operator.airflowHost . | quote }}
+            {{- if .Values.operator.dagsUri }}
+            - name: AIRFLOW_DAGS_URI
+              value: {{ tpl .Values.operator.dagsUri . | quote }}
+            {{- end }}
             {{- if .Values.livenessProbe }}
             - name: LIVENESS_PROBE
               value: {{ tpl .Values.operator.livenessProbeAddress . | quote }}

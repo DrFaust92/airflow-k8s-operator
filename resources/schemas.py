@@ -132,6 +132,77 @@ class PoolSpec(BaseModel):
     )
 
 
+class ConfigMapRef(BaseModel):
+    """Reference to a key within a Kubernetes ConfigMap."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(description="The name of the Kubernetes ConfigMap.")
+    key: str = Field(
+        description=(
+            "The key within the ConfigMap: a plain-text DAG file in `data`, or "
+            "a base64-encoded zip archive in `binaryData`."
+        )
+    )
+
+
+class DagSourceUrl(BaseModel):
+    """A DAG file or packaged-DAG zip downloaded from an http(s) URL."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str = Field(description="The http(s) URL of the DAG file or zip archive.")
+    sha256: str | None = Field(
+        default=None,
+        description=(
+            "Optional hex-encoded SHA-256 of the content. When set, downloads "
+            "that do not match are rejected."
+        ),
+    )
+
+
+class ObjectRef(BaseModel):
+    """An existing gs:// or s3:// object to copy into the DAGs folder."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    uri: str = Field(
+        description="The gs://bucket/path or s3://bucket/path of the object."
+    )
+
+
+class DagSource(BaseModel):
+    """Where the DAG file (or packaged-DAG zip) comes from. Exactly one of
+    code / configMapRef / url / objectRef must be set."""
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "oneOf": [
+                {"required": ["code"]},
+                {"required": ["configMapRef"]},
+                {"required": ["url"]},
+                {"required": ["objectRef"]},
+            ]
+        },
+    )
+
+    code: str | None = Field(
+        default=None, description="Inline Python source of a single DAG file."
+    )
+    configMapRef: ConfigMapRef | None = Field(
+        default=None,
+        description="Reference to a Kubernetes ConfigMap holding the DAG source.",
+    )
+    url: DagSourceUrl | None = Field(
+        default=None, description="An http(s) URL to download the DAG source from."
+    )
+    objectRef: ObjectRef | None = Field(
+        default=None,
+        description="An existing object-store URI to copy the DAG source from.",
+    )
+
+
 class DagSpec(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     crd: ClassVar[dict] = {
@@ -145,16 +216,27 @@ class DagSpec(BaseModel):
         default=None,
         alias="dagId",
         description=(
-            "The DAG ID in Airflow. Defaults to the resource name. DAGs cannot "
-            "be created through the Airflow API -- they come from DAG files -- "
-            "so this resource adopts an existing DAG and manages its paused "
-            "state. Deleting the resource deletes the DAG's metadata/history "
-            "in Airflow; the DAG reappears on the next parse if its file still "
-            "exists."
+            "The DAG ID in Airflow. Defaults to the resource name. Without "
+            "`source`, DAGs cannot be created through the Airflow API -- they "
+            "come from DAG files -- so this resource adopts an existing DAG "
+            "and manages its paused state. Deleting the resource deletes the "
+            "DAG's metadata/history in Airflow; the DAG reappears on the next "
+            "parse if its file still exists."
         ),
     )
     is_paused: bool = Field(
         alias="isPaused", description="Whether the DAG is paused."
+    )
+    source: DagSource | None = Field(
+        default=None,
+        description=(
+            "Optional DAG source to deliver to the Airflow DAGs folder "
+            "(requires the operator's AIRFLOW_DAGS_URI to be configured). The "
+            "content is uploaded as <dagId>.py, or <dagId>.zip when it is a "
+            "packaged-DAG zip archive; for a zip, dagId names the primary DAG "
+            "whose paused state is managed. Without source, the resource "
+            "adopts a DAG that already exists in Airflow."
+        ),
     )
 
 

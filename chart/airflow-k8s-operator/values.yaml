@@ -170,6 +170,10 @@ podMonitor:
 operator:
   # -- (string) address for the operator
   airflowHost: ""
+  # -- (string) destination for DAG uploads (spec.source): gs://bucket/prefix,
+  # s3://bucket/prefix, or file:///path (e.g. a PVC added via volumes/volumeMounts).
+  # Empty disables DAG upload; Dag resources then adopt existing DAGs only.
+  dagsUri: ""
 
   basicAuthSecret:
     # -- (bool) whether to use basic auth secrets
