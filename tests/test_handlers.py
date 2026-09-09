@@ -7,6 +7,7 @@ import pytest
 from airflow_client.client.exceptions import ApiException, NotFoundException
 
 import resources.connections as connections
+import resources.dags as dags
 import resources.pools as pools
 import resources.variables as variables
 
@@ -15,6 +16,7 @@ logger = logging.getLogger("test")
 CONN_SPEC = {"connType": "http", "host": "example.com"}
 VAR_SPEC = {"value": "v"}
 POOL_SPEC = {"slots": 5, "description": "d"}
+DAG_SPEC = {"dagId": "my_dag", "isPaused": True}
 
 
 def _patch():
@@ -164,6 +166,317 @@ def test_reconcile_pool_recreates_when_missing(monkeypatch):
 
     api.patch_pool.assert_called_once()
     api.post_pool.assert_called_once()
+
+
+# --- dags: adopt-only contract (no create endpoint in the Airflow API) ----
+
+
+def test_create_dag_patches_and_marks_synced(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    patch = _patch()
+
+    dags.create_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch)
+
+    api.patch_dag.assert_called_once()
+    kwargs = api.patch_dag.call_args.kwargs
+    assert kwargs["dag_id"] == "my_dag"
+    assert kwargs["update_mask"] == ["is_paused"]
+    assert kwargs["dag"].is_paused is True
+    assert patch.status["phase"] == "Synced"
+
+
+def test_dag_id_falls_back_to_resource_name(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    dags.create_dag(
+        spec={"isPaused": False},
+        name="my-dag-cr",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
+    )
+
+    assert api.patch_dag.call_args.kwargs["dag_id"] == "my-dag-cr"
+
+
+def test_reconcile_dag_not_found_is_temporary_with_parse_message(monkeypatch):
+    # No create endpoint exists, so a missing DAG (file not parsed yet or
+    # removed) must keep retrying with a distinct message, not recreate.
+    api = MagicMock()
+    api.patch_dag.side_effect = NotFoundException(status=404, reason="Not Found")
+    monkeypatch.setattr(dags, "dags_api", api)
+    patch = _patch()
+
+    with pytest.raises(kopf.TemporaryError):
+        dags.reconcile_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch)
+
+    assert patch.status["phase"] == "Error"
+    assert "waiting for it to be parsed" in patch.status["message"]
+
+
+def test_reconcile_dag_bad_request_is_permanent(monkeypatch):
+    api = MagicMock()
+    api.patch_dag.side_effect = ApiException(status=400, reason="bad spec")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.PermanentError):
+        dags.reconcile_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch())
+
+
+def test_reconcile_dag_other_error_raises_temporary(monkeypatch):
+    api = MagicMock()
+    api.patch_dag.side_effect = ApiException(status=503, reason="unavailable")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.TemporaryError):
+        dags.reconcile_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch())
+
+
+def test_delete_dag_calls_airflow_and_ignores_not_found(monkeypatch):
+    api = MagicMock()
+    api.delete_dag.side_effect = NotFoundException(status=404, reason="Not Found")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    dags.delete_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger)
+    assert api.delete_dag.call_args.kwargs["dag_id"] == "my_dag"
+
+
+def test_delete_dag_other_error_raises_temporary(monkeypatch):
+    api = MagicMock()
+    api.delete_dag.side_effect = ApiException(status=500, reason="boom")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.TemporaryError):
+        dags.delete_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+
+# --- dags: source delivery (spec.source -> DAGs folder) --------------------
+
+
+class FakeBackend:
+    def __init__(self):
+        self.store = {}
+        self.writes = 0
+
+    def read(self, name):
+        return self.store.get(name)
+
+    def write(self, name, data):
+        self.store[name] = data
+        self.writes += 1
+
+    def delete(self, name):
+        self.store.pop(name, None)
+
+
+SOURCED_DAG_SPEC = {
+    "dagId": "my_dag",
+    "isPaused": True,
+    "source": {"code": "print('hello')\n"},
+}
+
+
+def _sourced(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    backend = FakeBackend()
+    monkeypatch.setattr(dags, "get_backend", lambda: backend)
+    return api, backend
+
+
+def test_sourced_create_uploads_with_marker_then_patches(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    patch = _patch()
+
+    dags.create_dag(
+        spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch
+    )
+
+    uploaded = backend.store["my_dag.py"]
+    assert uploaded.startswith(b"# managed-by: airflow-k8s-operator dag=ns/d1\n")
+    assert b"print('hello')" in uploaded
+    api.patch_dag.assert_called_once()
+    assert patch.status["phase"] == "Synced"
+
+
+def test_sourced_reconcile_is_idempotent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+
+    for _ in range(2):
+        dags.reconcile_dag(
+            spec=SOURCED_DAG_SPEC,
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+        )
+
+    assert backend.writes == 1
+
+
+def test_sourced_zip_uploads_with_comment_marker(monkeypatch):
+    import io
+    import zipfile
+
+    api, backend = _sourced(monkeypatch)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("my_dag.py", "print('zipped')\n")
+    spec = {
+        "dagId": "my_dag",
+        "isPaused": True,
+        "source": {"configMapRef": {"name": "cm", "key": "dag.zip"}},
+    }
+    monkeypatch.setattr(dags, "get_config_map_value", lambda *a, **k: buf.getvalue())
+
+    dags.create_dag(spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch())
+
+    uploaded = backend.store["my_dag.zip"]
+    comment = zipfile.ZipFile(io.BytesIO(uploaded)).comment.decode()
+    assert comment == "managed-by: airflow-k8s-operator dag=ns/d1"
+
+
+def test_unsourced_dag_never_touches_storage(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    backend_factory = MagicMock()
+    monkeypatch.setattr(dags, "get_backend", backend_factory)
+
+    dags.reconcile_dag(
+        spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+    )
+
+    backend_factory.assert_not_called()
+
+
+def test_sourced_dag_without_backend_is_permanent(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    monkeypatch.setattr(dags, "get_backend", lambda: None)
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=SOURCED_DAG_SPEC,
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+        )
+    api.patch_dag.assert_not_called()
+
+
+def test_sourced_dag_refuses_foreign_file(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    backend.store["my_dag.py"] = b"# hand-managed\nprint('mine')\n"
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=SOURCED_DAG_SPEC,
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+        )
+    assert backend.store["my_dag.py"] == b"# hand-managed\nprint('mine')\n"
+
+
+def test_sourced_dag_syntax_error_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "source": {"code": "def broken(:\n"}}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_dag_id_with_path_traversal_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "dagId": "../../etc/cron.d/evil"}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_url_non_http_scheme_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "source": {"url": {"url": "file:///etc/passwd"}}}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_url_link_local_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.setattr(
+        dags.socket,
+        "getaddrinfo",
+        lambda *a, **k: [(2, 1, 6, "", ("169.254.169.254", 80))],
+    )
+    spec = {
+        **SOURCED_DAG_SPEC,
+        "source": {"url": {"url": "http://metadata.internal.example/token"}},
+    }
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_dag_url_sha256_mismatch_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.setattr(
+        dags.socket,
+        "getaddrinfo",
+        lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 443))],
+    )
+    resp = MagicMock(is_redirect=False, is_permanent_redirect=False)
+    resp.iter_content.return_value = [b"print('x')\n"]
+    monkeypatch.setattr(dags.requests, "get", lambda *a, **k: resp)
+    spec = {
+        **SOURCED_DAG_SPEC,
+        "source": {"url": {"url": "https://example.com/dag.py", "sha256": "0" * 64}},
+    }
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_delete_removes_owned_file_and_dag(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    dags.create_dag(
+        spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+    )
+    assert "my_dag.py" in backend.store
+
+    dags.delete_dag(spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+    assert backend.store == {}
+    api.delete_dag.assert_called_once()
+
+
+def test_sourced_delete_leaves_foreign_file(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    backend.store["my_dag.py"] = b"# hand-managed\nprint('mine')\n"
+
+    dags.delete_dag(spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+    assert backend.store["my_dag.py"] == b"# hand-managed\nprint('mine')\n"
+    api.delete_dag.assert_called_once()
 
 
 # --- team_name (Airflow 3 / v2 multi-team field) --------------------------

@@ -75,6 +75,11 @@ def _to_crd_schema(node, defs):
                 for b in node[combiner]
                 if not (isinstance(b, dict) and b.get("type") == "null")
             ]
+            # Only collapse ``X | None`` unions (a null branch was dropped).
+            # A combiner without a null branch is a real constraint (e.g. an
+            # exactly-one-of) that CRD schemas support -- keep it.
+            if len(branches) == len(node[combiner]):
+                break
             base = _to_crd_schema(branches[0], defs)
             for key, value in node.items():
                 if key != combiner and key not in _DROP:

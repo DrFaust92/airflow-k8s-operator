@@ -9,6 +9,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
 - **Airflow Pools**: Management of Airflow pools
+- **Airflow DAGs**: Adoption of existing DAGs and management of their paused state, and optional delivery of DAG files/packages to the Airflow DAGs folder (GCS, S3, or a mounted volume) — see [Uploading DAGs](#uploading-dags)
 
 ## Roadmap (TBD)
 
@@ -188,11 +189,11 @@ This deploys the necessary resources to your local kind cluster for testing.
 helm template chart/airflow-k8s-operator-crds | kubectl apply -f -
 ```
 
-This applies the Airflow Variable, Connection, and Pool CRDs to your cluster, enabling you to manage Airflow resources using Kubernetes custom resources. (The CRDs live in their own `airflow-k8s-operator-crds` chart.)
+This applies the Airflow Variable, Connection, Pool, and Dag CRDs to your cluster, enabling you to manage Airflow resources using Kubernetes custom resources. (The CRDs live in their own `airflow-k8s-operator-crds` chart.)
 
 1. Deploy a Custom Resource:
 
-After deploying the CRDs, you can create Airflow Variables and Connections as Kubernetes custom resources. Examples are available in the `tests/` directory.
+After deploying the CRDs, you can create Airflow Variables, Connections, Pools, and Dags as Kubernetes custom resources. Examples are available in the `tests/` directory.
 
 **Deploy an Airflow Variable:**
 
@@ -266,7 +267,7 @@ helm upgrade --install airflow-tenant-b oci://ghcr.io/drfaust92/charts/airflow-k
     --set operator.airflowHost=http://airflow-b.tenant-b:8080
 ```
 
-A `Variable`/`Connection`/`Pool` created in `tenant-a` is reconciled only by
+A `Variable`/`Connection`/`Pool`/`Dag` created in `tenant-a` is reconciled only by
 that namespace's operator, against Airflow A. Namespaced operators run with
 `--standalone`, so they don't peer with (or pause) one another.
 
@@ -278,7 +279,7 @@ that namespace's operator, against Airflow A. Namespaced operators run with
 > with "invalid ownership metadata". Re-label them once to hand over ownership:
 >
 > ```bash
-> for crd in connections pools variables; do
+> for crd in connections pools variables dags; do
 >   kubectl annotate crd $crd.airflow.drfaust92 --overwrite \
 >     meta.helm.sh/release-name=airflow-crds meta.helm.sh/release-namespace=<ns>
 >   kubectl label crd $crd.airflow.drfaust92 --overwrite app.kubernetes.io/managed-by=Helm
@@ -333,18 +334,65 @@ Required IAM policy example (attach to the IRSA role):
 }
 ```
 
+## Uploading DAGs
+
+The Airflow REST API cannot create DAGs — they come from files in the DAGs
+folder. When the operator is configured with a DAGs destination, a `Dag`
+resource can carry its own source and the operator delivers it there, then
+manages the DAG's paused state as usual:
+
+```bash
+# Composer:    gs://<composer-bucket>/dags
+# MWAA:        s3://<mwaa-bucket>/dags
+# self-hosted: file:///mnt/dags (mount the shared volume via values `volumes`/`volumeMounts`)
+helm upgrade --install airflow-operator oci://ghcr.io/drfaust92/charts/airflow-k8s-operator \
+  --set operator.airflowHost=... \
+  --set operator.dagsUri=gs://my-composer-bucket/dags
+```
+
+`spec.source` accepts exactly one of:
+
+- `code`: inline Python for a single DAG file
+- `configMapRef: {name, key}`: a `.py` from ConfigMap `data`, or a packaged-DAG
+  zip from `binaryData`
+- `url: {url, sha256?}`: downloaded over http(s), optionally pinned to a SHA-256
+- `objectRef: {uri}`: an existing `gs://`/`s3://` object copied into the DAGs folder
+
+The content is uploaded as `<dagId>.py`, or `<dagId>.zip` when it is a zip
+archive ([packaged DAGs](https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/dags.html#packaged-dags):
+DAG files at the zip root plus pure-Python dependency packages — no compiled
+libraries). A zip may define several DAGs; `dagId` names the primary one whose
+paused state is managed.
+
+Uploaded files carry an ownership marker (a header comment for `.py`, the
+archive comment for `.zip`). The operator refuses to overwrite or delete a file
+in the DAGs folder that it does not own, so hand-managed DAG files are safe.
+Deleting the resource removes the uploaded file and the DAG's metadata in
+Airflow. Without `spec.source`, a `Dag` resource adopts an existing DAG only.
+
+Security notes: a `Dag` resource delivers executable code to your Airflow
+workers, so RBAC on the `dags.airflow.drfaust92` resource is the trust
+boundary — grant create/update on it as deliberately as you would grant push
+access to your DAGs repo. `objectRef` copies whatever the *operator's*
+credentials can read into the (readable) DAGs folder, so scope those
+credentials to the DAGs bucket and intended staging locations only — prefer
+Workload Identity/IRSA via `serviceAccount.annotations` over static keys.
+`url` sources are restricted to http(s), block link-local/metadata endpoints,
+follow at most 5 redirects (each re-checked), and are capped at 50MB; pin
+`sha256` for anything not fully trusted.
+
 ## Project Architecture
 
-This operator is a small Kubernetes controller whose responsibility is to reconcile custom resources representing Airflow objects (currently Variables and Connections) with a target Airflow instance. The project follows a simple, modular layout:
+This operator is a small Kubernetes controller whose responsibility is to reconcile custom resources representing Airflow objects (Variables, Connections, Pools, and Dags) with a target Airflow instance. The project follows a simple, modular layout:
 
 - `chart/`: Helm chart and CRD manifests used to install the operator and its CustomResourceDefinitions into a cluster.
 - `main.py`: Entrypoint for the operator process (wires controller startup and watches).
 - `config/`: Authentication and environment helpers used to configure the Airflow API client and any cloud auth logic.
 - `client.py`: Lightweight HTTP client that talks to the Airflow REST API (handles base URL normalization, token acquisition, and retries).
-- `resources/`: Mapping code that translates Kubernetes custom resource fields into the payloads expected by the Airflow API for Variables and Connections.
+- `resources/`: Mapping code that translates Kubernetes custom resource fields into the payloads expected by the Airflow API for each supported resource.
 - `tests/`: Example CRs and unit tests used during development and for local validation.
 
-The controller is implemented as a reconciliation loop: it watches the Variable and Connection CRDs and attempts to make the Airflow state match the declared Kubernetes resource state. Changes detected in the cluster trigger create/update/delete operations against the Airflow REST API.
+The controller is implemented as a reconciliation loop: it watches the supported CRDs and attempts to make the Airflow state match the declared Kubernetes resource state. Changes detected in the cluster trigger create/update/delete operations against the Airflow REST API.
 
 ## Implementation Details
 
@@ -353,7 +401,7 @@ The controller is implemented as a reconciliation loop: it watches the Variable 
 - Authentication: the operator supports multiple authentication methods. Google Cloud authentication is enabled via the `USE_GOOGLE_AUTH` environment variable and uses Application Default Credentials. Basic auth is supported through `AIRFLOW_USERNAME` and `AIRFLOW_PASSWORD`. The `config/` helpers centralize environment parsing and token handling.
 - Reconciliation interval: the frequency with which the operator reconciles resources with the Airflow instance is controlled by the `OPERATOR_RECONCILE_INTERVAL` environment variable. The default value is 300 seconds (5 minutes). You can adjust this variable to change how often the operator checks and updates Airflow resources.
 - Error handling: transient HTTP errors are retried; permanent errors are surfaced to the Kubernetes resource status so users can see reconciliation failures.
-- CRD design: the CRD YAML files under `chart/airflow-k8s-operator-crds/templates/` define the schema for `Variable`, `Connection`, and `Pool` custom resources. Tests in `tests/` contain minimal example CRs that can be applied to a cluster for end-to-end verification.
+- CRD design: the CRD YAML files under `chart/airflow-k8s-operator-crds/templates/` define the schema for `Variable`, `Connection`, `Pool`, and `Dag` custom resources. Tests in `tests/` contain minimal example CRs that can be applied to a cluster for end-to-end verification.
 
 ## Contributing
 

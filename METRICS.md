@@ -13,7 +13,7 @@ Metrics are exposed at `http://localhost:9000/metrics` by default. The metrics e
 **Labels:** `resource_type`, `operation`, `status`
 **Description:** Total number of resource operations performed by the operator.
 
-- `resource_type`: `variable`, `connection`, or `pool`
+- `resource_type`: `variable`, `connection`, `pool`, or `dag`
 - `operation`: `create`, `update`, or `delete`
 - `status`: `success` or `failure`
 

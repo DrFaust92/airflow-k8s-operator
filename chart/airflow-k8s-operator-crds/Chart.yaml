@@ -2,12 +2,12 @@ apiVersion: v2
 name: airflow-k8s-operator-crds
 description: |
   CustomResourceDefinitions for the Airflow Kubernetes Operator
-  (Connection, Pool, Variable). Cluster-scoped and shared: install once, then
+  (Connection, Pool, Variable, Dag). Cluster-scoped and shared: install once, then
   deploy the operator chart with crds.create=false for multi-tenant setups.
 type: application
 
 # Chart version (Semantic Versioning). Bump when a CRD changes.
-version: 0.3.0
+version: 0.5.0
 
 # The operator app version these CRDs correspond to.
 appVersion: "0.7.0"

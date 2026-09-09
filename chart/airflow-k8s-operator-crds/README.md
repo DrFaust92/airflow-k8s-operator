@@ -1,7 +1,7 @@
 # airflow-k8s-operator-crds
 
 Cluster-scoped CustomResourceDefinitions for the Airflow Kubernetes Operator:
-`Connection`, `Pool`, and `Variable` (`airflow.drfaust92/v1beta1`).
+`Connection`, `Pool`, `Variable`, and `Dag` (`airflow.drfaust92/v1beta1`).
 
 These are split into their own chart so they can be installed once and shared —
 useful for multi-tenant clusters where several operator releases (one per
