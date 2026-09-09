@@ -3,6 +3,7 @@ import subprocess
 import time
 
 from airflow_client.client.api.connection_api import ConnectionApi
+from airflow_client.client.api.dag_api import DAGApi
 from airflow_client.client.api.pool_api import PoolApi
 from airflow_client.client.api.variable_api import VariableApi
 from airflow_client.client.exceptions import NotFoundException
@@ -21,6 +22,7 @@ CRD_RENDER = "helm template t chart/airflow-k8s-operator-crds"
 variable_api = VariableApi(api_client)
 connection_api = ConnectionApi(api_client)
 pool_api = PoolApi(api_client)
+dag_api = DAGApi(api_client)
 
 
 def _phase(kind, name):
@@ -98,7 +100,8 @@ def test_operator():
             "kubectl wait --for=condition=established --timeout=60s "
             "crd/connections.airflow.drfaust92 "
             "crd/pools.airflow.drfaust92 "
-            "crd/variables.airflow.drfaust92",
+            "crd/variables.airflow.drfaust92 "
+            "crd/dags.airflow.drfaust92",
             shell=True,
             check=True,
         )
@@ -158,6 +161,53 @@ def test_operator():
             f"kubectl delete -f {TEST_PATH}/pool.yaml", shell=True, check=True
         )
         _assert_absent(pool_api.get_pool, "example-pool")
+
+        # Dag: adopt an example DAG (loaded via AIRFLOW__CORE__LOAD_EXAMPLES in
+        # CI) -> Synced + paused in Airflow; update -> unpaused; delete -> CR
+        # released cleanly. The Synced wait also absorbs DAG-parse latency.
+        # Airflow-side absence is not asserted after delete: the DAG file still
+        # exists, so the next parse recreates the record nondeterministically.
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/dag.yaml", shell=True, check=True
+        )
+        _wait_for_synced("dag", "example-dag")
+        adopted_dag = _airflow_get(dag_api.get_dag, "example_bash_operator")
+        assert adopted_dag is not None and adopted_dag.get("is_paused") is True, (
+            adopted_dag
+        )
+
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/dag-updated.yaml", shell=True, check=True
+        )
+        deadline = time.time() + 60
+        unpaused = None
+        while time.time() < deadline:
+            unpaused = _airflow_get(dag_api.get_dag, "example_bash_operator")
+            if unpaused is not None and unpaused.get("is_paused") is False:
+                break
+            time.sleep(3)
+        assert unpaused is not None and unpaused.get("is_paused") is False, unpaused
+
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/dag.yaml",
+            shell=True,
+            check=True,
+            timeout=120,
+        )
+
+        # Dag not found: a CR pointing at a nonexistent dag_id must surface
+        # phase=Error (waiting for the DAG to be parsed) and still delete
+        # cleanly without wedging on the finalizer.
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/dag-missing.yaml", shell=True, check=True
+        )
+        _wait_for_phase("dag", "missing-dag", "Error", timeout=90)
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/dag-missing.yaml",
+            shell=True,
+            check=True,
+            timeout=120,
+        )
 
         # Drift-heal (out-of-band deletion): if the Airflow object is deleted
         # behind the operator's back, reconciliation must recreate it. Create

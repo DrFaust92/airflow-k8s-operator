@@ -132,5 +132,31 @@ class PoolSpec(BaseModel):
     )
 
 
+class DagSpec(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    crd: ClassVar[dict] = {
+        "kind": "Dag",
+        "plural": "dags",
+        "singular": "dag",
+        "short_names": ["dgs", "dg"],
+    }
+
+    dag_id: str | None = Field(
+        default=None,
+        alias="dagId",
+        description=(
+            "The DAG ID in Airflow. Defaults to the resource name. DAGs cannot "
+            "be created through the Airflow API -- they come from DAG files -- "
+            "so this resource adopts an existing DAG and manages its paused "
+            "state. Deleting the resource deletes the DAG's metadata/history "
+            "in Airflow; the DAG reappears on the next parse if its file still "
+            "exists."
+        ),
+    )
+    is_paused: bool = Field(
+        alias="isPaused", description="Whether the DAG is paused."
+    )
+
+
 # Order here drives the order the CRD files are generated in.
-SPECS = [ConnectionSpec, PoolSpec, VariableSpec]
+SPECS = [ConnectionSpec, PoolSpec, VariableSpec, DagSpec]
