@@ -393,10 +393,56 @@ def test_sourced_dag_syntax_error_is_permanent(monkeypatch):
     assert backend.store == {}
 
 
+def test_sourced_dag_id_with_path_traversal_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "dagId": "../../etc/cron.d/evil"}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_url_non_http_scheme_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "source": {"url": {"url": "file:///etc/passwd"}}}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_url_link_local_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.setattr(
+        dags.socket,
+        "getaddrinfo",
+        lambda *a, **k: [(2, 1, 6, "", ("169.254.169.254", 80))],
+    )
+    spec = {
+        **SOURCED_DAG_SPEC,
+        "source": {"url": {"url": "http://metadata.internal.example/token"}},
+    }
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
 def test_sourced_dag_url_sha256_mismatch_is_permanent(monkeypatch):
     api, backend = _sourced(monkeypatch)
-    resp = MagicMock()
-    resp.content = b"print('x')\n"
+    monkeypatch.setattr(
+        dags.socket,
+        "getaddrinfo",
+        lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 443))],
+    )
+    resp = MagicMock(is_redirect=False, is_permanent_redirect=False)
+    resp.iter_content.return_value = [b"print('x')\n"]
     monkeypatch.setattr(dags.requests, "get", lambda *a, **k: resp)
     spec = {
         **SOURCED_DAG_SPEC,

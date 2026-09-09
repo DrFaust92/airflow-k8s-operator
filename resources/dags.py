@@ -1,5 +1,9 @@
 import hashlib
 import io
+import ipaddress
+import re
+import socket
+import urllib.parse
 import zipfile
 
 import kopf
@@ -23,6 +27,12 @@ dags_api = DAGApi(api_client=api_client)
 
 _ZIP_MAGIC = b"PK\x03\x04"
 _URL_TIMEOUT = 30
+_URL_MAX_REDIRECTS = 5
+_URL_MAX_BYTES = 50 * 1024 * 1024
+
+# The dag_id becomes the uploaded object/file name; forbid path separators and
+# anything else that could traverse out of the DAGs destination.
+_SAFE_DAG_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
 
 
 def _dag_id(name, spec) -> str:
@@ -33,6 +43,50 @@ def _marker(namespace, name) -> str:
     return f"managed-by: airflow-k8s-operator dag={namespace}/{name}"
 
 
+def _check_url(url: str):
+    """Reject non-http(s) URLs and cloud metadata endpoints (SSRF guard).
+
+    The operator's credentials must not be reachable through a Dag resource:
+    a fetch of the link-local metadata service would publish its response
+    into the world-readable DAGs folder.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise kopf.PermanentError(f"spec.source.url must be http(s): {url}")
+    host = parsed.hostname
+    if host == "metadata.google.internal":
+        raise kopf.PermanentError(f"spec.source.url may not target {host}")
+    for info in socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP):
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_link_local:
+            raise kopf.PermanentError(
+                f"spec.source.url host {host} resolves to link-local address "
+                f"{ip}; refusing to fetch"
+            )
+
+
+def _fetch_url(url: str) -> bytes:
+    # Redirects are followed manually so every hop passes the SSRF guard.
+    for _ in range(_URL_MAX_REDIRECTS + 1):
+        _check_url(url)
+        resp = requests.get(
+            url, timeout=_URL_TIMEOUT, allow_redirects=False, stream=True
+        )
+        if resp.is_redirect or resp.is_permanent_redirect:
+            url = urllib.parse.urljoin(url, resp.headers["location"])
+            continue
+        resp.raise_for_status()
+        data = b""
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            data += chunk
+            if len(data) > _URL_MAX_BYTES:
+                raise kopf.PermanentError(
+                    f"spec.source.url content exceeds {_URL_MAX_BYTES} bytes"
+                )
+        return data
+    raise kopf.PermanentError(f"spec.source.url: too many redirects fetching {url}")
+
+
 def _resolve_source(source, namespace, logger) -> bytes:
     if source.code is not None:
         return source.code.encode("utf-8")
@@ -41,9 +95,7 @@ def _resolve_source(source, namespace, logger) -> bytes:
             source.configMapRef.name, source.configMapRef.key, namespace, logger
         )
     if source.url is not None:
-        resp = requests.get(source.url.url, timeout=_URL_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.content
+        data = _fetch_url(source.url.url)
         if source.url.sha256:
             digest = hashlib.sha256(data).hexdigest()
             if digest != source.url.sha256.lower():
@@ -98,6 +150,14 @@ def _owned(existing: bytes, marker: str) -> bool:
     return first_line == f"# {marker}"
 
 
+def _validate_dag_id(dag_id: str):
+    if not _SAFE_DAG_ID.fullmatch(dag_id):
+        raise kopf.PermanentError(
+            f"dag_id '{dag_id}' is not a safe file name for DAG upload; "
+            f"allowed: letters, digits, underscore, dash, dot (no leading dot)"
+        )
+
+
 def _deliver(namespace, name, dag_id, parsed, logger):
     backend = get_backend()
     if backend is None:
@@ -105,6 +165,7 @@ def _deliver(namespace, name, dag_id, parsed, logger):
             "spec.source is set but DAG upload is not configured on the "
             "operator (AIRFLOW_DAGS_URI is unset)"
         )
+    _validate_dag_id(dag_id)
     marker = _marker(namespace, name)
     data = _resolve_source(parsed.source, namespace, logger)
     filename, desired = _prepare(data, dag_id, marker)
@@ -207,6 +268,7 @@ def delete_dag(spec, name, namespace, logger, retry=0, **kwargs):
         if parsed.source is not None:
             backend = get_backend()
             if backend is not None:
+                _validate_dag_id(dag_id)
                 _delete_owned_files(backend, dag_id, _marker(namespace, name), logger)
         try:
             dags_api.delete_dag(dag_id=dag_id, _preload_content=False)

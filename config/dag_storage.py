@@ -98,7 +98,13 @@ class _FileBackend:
         self._root = pathlib.Path(root)
 
     def _path(self, name: str) -> pathlib.Path:
-        return self._root / name
+        # Defense in depth: the caller validates names, but never let one
+        # escape the DAGs root regardless.
+        root = self._root.resolve()
+        path = (root / name).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"file name '{name}' escapes the DAGs root {root}")
+        return path
 
     def read(self, name: str) -> bytes | None:
         try:

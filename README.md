@@ -373,8 +373,13 @@ Airflow. Without `spec.source`, a `Dag` resource adopts an existing DAG only.
 Security notes: a `Dag` resource delivers executable code to your Airflow
 workers, so RBAC on the `dags.airflow.drfaust92` resource is the trust
 boundary — grant create/update on it as deliberately as you would grant push
-access to your DAGs repo. For bucket credentials prefer Workload
-Identity/IRSA via `serviceAccount.annotations` over static keys.
+access to your DAGs repo. `objectRef` copies whatever the *operator's*
+credentials can read into the (readable) DAGs folder, so scope those
+credentials to the DAGs bucket and intended staging locations only — prefer
+Workload Identity/IRSA via `serviceAccount.annotations` over static keys.
+`url` sources are restricted to http(s), block link-local/metadata endpoints,
+follow at most 5 redirects (each re-checked), and are capped at 50MB; pin
+`sha256` for anything not fully trusted.
 
 ## Project Architecture
 

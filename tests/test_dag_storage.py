@@ -56,6 +56,14 @@ def test_file_backend_roundtrip(tmp_path):
     backend.delete("d.py")  # missing delete is a no-op
 
 
+def test_file_backend_rejects_escaping_names(tmp_path):
+    backend = dag_storage._FileBackend(str(tmp_path / "dags"))
+    with pytest.raises(ValueError):
+        backend.write("../outside.py", b"data")
+    with pytest.raises(ValueError):
+        backend.read("/etc/passwd")
+
+
 # --- s3 backend (mocked boto3) ---------------------------------------------
 
 
