@@ -7,6 +7,7 @@ import pytest
 from airflow_client.client.exceptions import ApiException, NotFoundException
 
 import resources.connections as connections
+import resources.dags as dags
 import resources.pools as pools
 import resources.variables as variables
 
@@ -15,6 +16,7 @@ logger = logging.getLogger("test")
 CONN_SPEC = {"connType": "http", "host": "example.com"}
 VAR_SPEC = {"value": "v"}
 POOL_SPEC = {"slots": 5, "description": "d"}
+DAG_SPEC = {"dagId": "my_dag", "isPaused": True}
 
 
 def _patch():
@@ -164,6 +166,86 @@ def test_reconcile_pool_recreates_when_missing(monkeypatch):
 
     api.patch_pool.assert_called_once()
     api.post_pool.assert_called_once()
+
+
+# --- dags: adopt-only contract (no create endpoint in the Airflow API) ----
+
+
+def test_create_dag_patches_and_marks_synced(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    patch = _patch()
+
+    dags.create_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=patch)
+
+    api.patch_dag.assert_called_once()
+    kwargs = api.patch_dag.call_args.kwargs
+    assert kwargs["dag_id"] == "my_dag"
+    assert kwargs["update_mask"] == ["is_paused"]
+    assert kwargs["dag"].is_paused is True
+    assert patch.status["phase"] == "Synced"
+
+
+def test_dag_id_falls_back_to_resource_name(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    dags.create_dag(
+        spec={"isPaused": False}, name="my-dag-cr", logger=logger, patch=_patch()
+    )
+
+    assert api.patch_dag.call_args.kwargs["dag_id"] == "my-dag-cr"
+
+
+def test_reconcile_dag_not_found_is_temporary_with_parse_message(monkeypatch):
+    # No create endpoint exists, so a missing DAG (file not parsed yet or
+    # removed) must keep retrying with a distinct message, not recreate.
+    api = MagicMock()
+    api.patch_dag.side_effect = NotFoundException(status=404, reason="Not Found")
+    monkeypatch.setattr(dags, "dags_api", api)
+    patch = _patch()
+
+    with pytest.raises(kopf.TemporaryError):
+        dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=patch)
+
+    assert patch.status["phase"] == "Error"
+    assert "waiting for it to be parsed" in patch.status["message"]
+
+
+def test_reconcile_dag_bad_request_is_permanent(monkeypatch):
+    api = MagicMock()
+    api.patch_dag.side_effect = ApiException(status=400, reason="bad spec")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.PermanentError):
+        dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=_patch())
+
+
+def test_reconcile_dag_other_error_raises_temporary(monkeypatch):
+    api = MagicMock()
+    api.patch_dag.side_effect = ApiException(status=503, reason="unavailable")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.TemporaryError):
+        dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=_patch())
+
+
+def test_delete_dag_calls_airflow_and_ignores_not_found(monkeypatch):
+    api = MagicMock()
+    api.delete_dag.side_effect = NotFoundException(status=404, reason="Not Found")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    dags.delete_dag(spec=DAG_SPEC, name="d1", logger=logger)
+    assert api.delete_dag.call_args.kwargs["dag_id"] == "my_dag"
+
+
+def test_delete_dag_other_error_raises_temporary(monkeypatch):
+    api = MagicMock()
+    api.delete_dag.side_effect = ApiException(status=500, reason="boom")
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.TemporaryError):
+        dags.delete_dag(spec=DAG_SPEC, name="d1", logger=logger)
 
 
 # --- team_name (Airflow 3 / v2 multi-team field) --------------------------

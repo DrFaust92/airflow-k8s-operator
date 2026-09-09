@@ -42,6 +42,8 @@ jobs:
             --set webserver.resources.requests.memory=1Gi \
             --set webserver.resources.limits.memory=1Gi \
             --set config.api.auth_backend=airflow.api.auth.backend.basic_auth \
+            --set-string 'env[0].name=AIRFLOW__CORE__LOAD_EXAMPLES' \
+            --set-string 'env[0].value=True' \
             --timeout 3m \
             --wait
 
@@ -99,6 +101,8 @@ jobs:
             --set migrateDatabaseJob.applyCustomEnv=false \
             --set webserver.resources.requests.memory=1Gi \
             --set webserver.resources.limits.memory=1Gi \
+            --set-string 'env[0].name=AIRFLOW__CORE__LOAD_EXAMPLES' \
+            --set-string 'env[0].value=True' \
             --timeout 10m \
             --wait
 

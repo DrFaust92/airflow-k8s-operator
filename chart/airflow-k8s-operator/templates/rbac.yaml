@@ -46,7 +46,7 @@ rules:
     resources: [secrets]
     verbs: [get, list, watch]
   - apiGroups: [airflow.drfaust92]
-    resources: [variables, variables/status, connections, connections/status, pools, pools/status]
+    resources: [variables, variables/status, connections, connections/status, pools, pools/status, dags, dags/status]
     verbs: [list, watch, get, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -86,7 +86,7 @@ rules:
     resources: [secrets]
     verbs: [get, list, watch]
   - apiGroups: [airflow.drfaust92]
-    resources: [variables, variables/status, connections, connections/status, pools, pools/status]
+    resources: [variables, variables/status, connections, connections/status, pools, pools/status, dags, dags/status]
     verbs: [list, watch, get, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
