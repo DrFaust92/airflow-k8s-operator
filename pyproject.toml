@@ -9,7 +9,7 @@ dependencies = [
     "kopf>=1.44.6",
     "google-auth[requests]>=2.55.1",
     "kubernetes>=36.0.2",
-    "prometheus-client==0.25.0",
+    "prometheus-client==0.26.0",
     "boto3>=1.43.38",
     "requests>=2.32.5",
     "pydantic>=2",
