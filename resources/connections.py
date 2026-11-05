@@ -11,7 +11,7 @@ from config.base import (
 from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import DELETE_MAX_RETRIES, track
+from config.reconcile import DELETE_MAX_RETRIES, adopt_conflict, owns, track
 from resources.schemas import ConnectionSpec
 
 connections_api = ConnectionApi(api_client=api_client)
@@ -58,6 +58,8 @@ def create_connection(spec, name, namespace, logger, patch, **kwargs):
         except ApiException as e:
             if e.status != 409:
                 raise
+            if not ConnectionSpec.model_validate(spec).adopt:
+                raise adopt_conflict("Connection", name) from e
             # Already exists in Airflow (created out-of-band or re-created CR);
             # adopt it by patching instead of looping on the conflict.
             logger.info(f"Connection {name} already exists in Airflow; adopting")
@@ -77,8 +79,11 @@ def create_connection(spec, name, namespace, logger, patch, **kwargs):
     interval=OPERATOR_RECONCILE_INTERVAL,
     initial_delay=OPERATOR_RECONCILE_INTERVAL_DELAY,
 )
-def reconcile_connection(spec, name, namespace, logger, patch, **kwargs):
+def reconcile_connection(spec, name, namespace, logger, patch, status=None, **kwargs):
     logger.info(f"Reconciling Airflow Connection: {name}")
+    if not owns(status, "create_connection", ConnectionSpec.model_validate(spec).adopt):
+        logger.info(f"Connection {name} is not managed by this resource; skipping")
+        return None
     with track("connection", "update", logger, patch=patch):
         connection = _build_connection(name, spec, namespace, logger)
         try:
@@ -94,10 +99,13 @@ def reconcile_connection(spec, name, namespace, logger, patch, **kwargs):
 @kopf.on.delete(
     "airflow.drfaust92", "v1beta1", "connections", retries=DELETE_MAX_RETRIES
 )
-def delete_connection(name, namespace, logger, retry=0, **kwargs):
+def delete_connection(spec, name, namespace, logger, retry=0, status=None, **kwargs):
     # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
     # attempts kopf gives up and releases the finalizer instead of wedging the
     # resource forever. The final attempt emits a Warning event + metric.
+    if not owns(status, "create_connection", ConnectionSpec.model_validate(spec).adopt):
+        logger.info(f"Connection {name} is not managed by this resource; leaving it")
+        return {"message": f"Connection {name} left in Airflow (not managed)."}
     logger.info(f"Deleting Airflow Connection: {name}")
     with track(
         "connection",
