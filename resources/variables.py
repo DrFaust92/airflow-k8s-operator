@@ -33,17 +33,30 @@ def _build_variable(name, spec, namespace, logger) -> Variable:
     return Variable(**{k: v for k, v in fields.items() if v is not None})
 
 
+def _exists(name) -> bool:
+    try:
+        variables_api.get_variable(variable_key=name, _preload_content=False)
+    except NotFoundException:
+        return False
+    return True
+
+
 @kopf.on.create("airflow.drfaust92", "v1beta1", "variables")
 def create_variable(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Variable: {name}")
     with track("variable", "create", logger, patch=patch):
         variable = _build_variable(name, spec, namespace, logger)
+        adopt = VariableSpec.model_validate(spec).adopt
+        # Airflow 2's POST /variables overwrites an existing key instead of
+        # returning 409, so check for one first.
+        if not adopt and _exists(name):
+            raise adopt_conflict("Variable", name)
         try:
             variables_api.post_variables(variable, _preload_content=False)
         except ApiException as e:
             if e.status != 409:
                 raise
-            if not VariableSpec.model_validate(spec).adopt:
+            if not adopt:
                 raise adopt_conflict("Variable", name) from e
             # Already exists in Airflow; adopt it by patching.
             logger.info(f"Variable {name} already exists in Airflow; adopting")

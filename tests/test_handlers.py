@@ -101,8 +101,36 @@ def test_delete_connection_leaves_unowned(monkeypatch):
     api.delete_connection.assert_not_called()
 
 
+def test_create_variable_existing_key_without_adopt_is_permanent(monkeypatch):
+    # Airflow 2 upserts on POST /variables (no 409), so an existing key must be
+    # caught before posting.
+    api = MagicMock()
+    monkeypatch.setattr(variables, "variables_api", api)
+
+    with pytest.raises(kopf.PermanentError):
+        variables.create_variable(
+            spec=VAR_SPEC, name="v1", namespace="ns", logger=logger, patch=_patch()
+        )
+    api.post_variables.assert_not_called()
+
+
+def test_create_variable_posts_when_key_is_free(monkeypatch):
+    api = MagicMock()
+    api.get_variable.side_effect = NotFoundException(status=404, reason="Not Found")
+    monkeypatch.setattr(variables, "variables_api", api)
+    patch = _patch()
+
+    variables.create_variable(
+        spec=VAR_SPEC, name="v1", namespace="ns", logger=logger, patch=patch
+    )
+    api.post_variables.assert_called_once()
+    assert patch.status["phase"] == "Synced"
+
+
 def test_create_variable_conflict_without_adopt_is_permanent(monkeypatch):
     api = MagicMock()
+    # Free on the pre-check, taken by the time of the POST (Airflow 3 409s).
+    api.get_variable.side_effect = NotFoundException(status=404, reason="Not Found")
     api.post_variables.side_effect = ApiException(status=409, reason="exists")
     monkeypatch.setattr(variables, "variables_api", api)
 
