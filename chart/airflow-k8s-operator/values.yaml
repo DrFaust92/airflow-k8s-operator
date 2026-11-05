@@ -54,34 +54,31 @@ podAnnotations: {}
 # -- (map) labels to add to the pod
 podLabels: {}
 
-# -- (map) pod-level security context
+# -- (map) pod-level security context. The image's `nonroot` user is UID/GID 999;
+# it is set numerically because runAsNonRoot can't verify a named user.
 podSecurityContext:
-  {}
-  # fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 999
+  runAsGroup: 999
+  seccompProfile:
+    type: RuntimeDefault
 
-# -- (map) container security context
+# -- (map) container security context. The root filesystem is read-only; /tmp
+# is an emptyDir.
 securityContext:
-  {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
 
+# -- (map) resource requests and limits
 resources:
-  # -- (map) resource requests and limits
-  {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
 
 # -- (map) liveness probe configuration
 livenessProbe:
@@ -179,6 +176,10 @@ operator:
     # The secret must contain the keys specified in `usernameKey` and `passwordKey`.
     # If the secret or keys do not exist, the deployment will fail.
     create: false
+    # -- (string) username to store in the created secret (required when create is true)
+    username: ""
+    # -- (string) password to store in the created secret (required when create is true)
+    password: ""
     # -- (string) name of the basic auth secret
     secretName: "airflow-basic-auth"
     # -- (string) key name for username in the secret
@@ -189,3 +190,5 @@ operator:
   livenessProbeAddress: "http://0.0.0.0:{{ .Values.port }}/healthz"
   # -- (string) log format for the operator (full, json, simple)
   logFormat: "json"
+  # -- (bool) enable kopf verbose (debug) logging
+  verbose: false

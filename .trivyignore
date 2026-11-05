@@ -3,7 +3,3 @@
 
 # The operator reads Secrets referenced by secretRef, so it needs Secret access.
 KSV-0041
-
-# values.yaml ships an empty securityContext; pending secure chart defaults.
-KSV-0014
-KSV-0118
