@@ -151,12 +151,18 @@ class DagSourceUrl(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    url: str = Field(description="The http(s) URL of the DAG file or zip archive.")
-    sha256: str | None = Field(
-        default=None,
+    url: str = Field(
         description=(
-            "Optional hex-encoded SHA-256 of the content. When set, downloads "
-            "that do not match are rejected."
+            "The http(s) URL of the DAG file or zip archive. It must resolve to "
+            "a public address and must not contain credentials."
+        )
+    )
+    sha256: str = Field(
+        pattern=r"^[A-Fa-f0-9]{64}$",
+        description=(
+            "Hex-encoded SHA-256 of the content. Required: the URL is fetched "
+            "on every reconcile, so the pin keeps a change at the URL from "
+            "deploying code without a change to this resource."
         ),
     )
 
@@ -167,7 +173,11 @@ class ObjectRef(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     uri: str = Field(
-        description="The gs://bucket/path or s3://bucket/path of the object."
+        description=(
+            "The gs://bucket/path or s3://bucket/path of the object. It must be "
+            "under one of the operator's allowed source prefixes "
+            "(AIRFLOW_DAGS_SOURCE_PREFIXES)."
+        )
     )
 
 
@@ -216,16 +226,22 @@ class DagSpec(BaseModel):
         default=None,
         alias="dagId",
         description=(
-            "The DAG ID in Airflow. Defaults to the resource name. Without "
-            "`source`, DAGs cannot be created through the Airflow API -- they "
-            "come from DAG files -- so this resource adopts an existing DAG "
-            "and manages its paused state. Deleting the resource deletes the "
-            "DAG's metadata/history in Airflow; the DAG reappears on the next "
-            "parse if its file still exists."
+            "The DAG ID in Airflow. Defaults to the resource name. DAGs cannot "
+            "be created through the Airflow API -- they come from DAG files -- "
+            "so this resource adopts an existing DAG and manages its paused "
+            "state."
         ),
     )
-    is_paused: bool = Field(
-        alias="isPaused", description="Whether the DAG is paused."
+    is_paused: bool = Field(alias="isPaused", description="Whether the DAG is paused.")
+    delete_dag: bool = Field(
+        default=False,
+        alias="deleteDag",
+        description=(
+            "Delete the DAG's metadata and run history from Airflow when this "
+            "resource is deleted. By default the DAG is left untouched and only "
+            "stops being managed. The DAG reappears on the next parse if its "
+            "file still exists."
+        ),
     )
     source: DagSource | None = Field(
         default=None,

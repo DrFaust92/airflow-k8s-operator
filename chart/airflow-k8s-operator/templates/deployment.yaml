@@ -42,7 +42,9 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
+            {{- if .Values.operator.verbose }}
             - "-v"
+            {{- end }}
             - "--log-format={{ .Values.operator.logFormat }}"
             - "--liveness={{ tpl .Values.operator.livenessProbeAddress . }}"
             {{- if eq .Values.scope "namespaced" }}
@@ -66,6 +68,10 @@ spec:
             {{- if .Values.operator.dagsUri }}
             - name: AIRFLOW_DAGS_URI
               value: {{ tpl .Values.operator.dagsUri . | quote }}
+            {{- end }}
+            {{- with .Values.operator.dagsSourcePrefixes }}
+            - name: AIRFLOW_DAGS_SOURCE_PREFIXES
+              value: {{ join "," . | quote }}
             {{- end }}
             {{- if .Values.livenessProbe }}
             - name: LIVENESS_PROBE
@@ -94,14 +100,18 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.volumeMounts }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with .Values.volumes }}
+            {{- end }}
       volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

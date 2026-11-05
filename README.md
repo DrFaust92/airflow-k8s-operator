@@ -9,7 +9,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
 - **Airflow Pools**: Management of Airflow pools
-- **Airflow DAGs**: Adoption of existing DAGs and management of their paused state, and optional delivery of DAG files/packages to the Airflow DAGs folder (GCS, S3, or a mounted volume) — see [Uploading DAGs](#uploading-dags)
+- **Airflow DAGs**: Adoption of existing DAGs and management of their paused state, and optional delivery of DAG files/packages to the Airflow DAGs folder (GCS, S3, or a mounted volume) — see [Uploading DAGs](#uploading-dags). Deleting a `Dag` resource leaves the DAG record in Airflow unless `spec.deleteDag: true` is set, which also deletes its metadata and run history
 
 ## Roadmap (TBD)
 
@@ -355,8 +355,9 @@ helm upgrade --install airflow-operator oci://ghcr.io/drfaust92/charts/airflow-k
 - `code`: inline Python for a single DAG file
 - `configMapRef: {name, key}`: a `.py` from ConfigMap `data`, or a packaged-DAG
   zip from `binaryData`
-- `url: {url, sha256?}`: downloaded over http(s), optionally pinned to a SHA-256
-- `objectRef: {uri}`: an existing `gs://`/`s3://` object copied into the DAGs folder
+- `url: {url, sha256}`: downloaded over http(s) and pinned to a SHA-256
+- `objectRef: {uri}`: an existing `gs://`/`s3://` object copied into the DAGs
+  folder, from a prefix the operator allows (`operator.dagsSourcePrefixes`)
 
 The content is uploaded as `<dagId>.py`, or `<dagId>.zip` when it is a zip
 archive ([packaged DAGs](https://airflow.apache.org/docs/apache-airflow/stable/core-concepts/dags.html#packaged-dags):
@@ -367,19 +368,30 @@ paused state is managed.
 Uploaded files carry an ownership marker (a header comment for `.py`, the
 archive comment for `.zip`). The operator refuses to overwrite or delete a file
 in the DAGs folder that it does not own, so hand-managed DAG files are safe.
-Deleting the resource removes the uploaded file and the DAG's metadata in
-Airflow. Without `spec.source`, a `Dag` resource adopts an existing DAG only.
+Deleting the resource removes the file it uploaded. The DAG record (and its run
+history) stays in Airflow unless `spec.deleteDag: true` is set. Without
+`spec.source`, a `Dag` resource adopts an existing DAG only.
 
 Security notes: a `Dag` resource delivers executable code to your Airflow
 workers, so RBAC on the `dags.airflow.drfaust92` resource is the trust
 boundary — grant create/update on it as deliberately as you would grant push
-access to your DAGs repo. `objectRef` copies whatever the *operator's*
-credentials can read into the (readable) DAGs folder, so scope those
-credentials to the DAGs bucket and intended staging locations only — prefer
-Workload Identity/IRSA via `serviceAccount.annotations` over static keys.
-`url` sources are restricted to http(s), block link-local/metadata endpoints,
-follow at most 5 redirects (each re-checked), and are capped at 50MB; pin
-`sha256` for anything not fully trusted.
+access to your DAGs repo. Upload is off unless `operator.dagsUri` is set.
+
+- `objectRef` reads with the *operator's* credentials, so it is denied unless
+  the object is under one of `operator.dagsSourcePrefixes` (for example
+  `gs://staging-bucket/dags/`). Still scope those credentials to the DAGs bucket
+  and the allowed prefixes, and prefer Workload Identity/IRSA via
+  `serviceAccount.annotations` over static keys.
+- `url` sources must be http(s) without credentials and must pin `sha256`.
+  Every address the host resolves to must be public (no private, loopback,
+  link-local/metadata, multicast or reserved ranges, including IPv4 embedded
+  in IPv6), and the operator connects to the address it checked. Proxy
+  environment variables are ignored, at most 5 redirects are followed (each
+  re-checked), and downloads are capped at 50MB and 120 seconds.
+- Every source is capped at 50MB.
+- An uploaded file can define any `dag_id`, not just `spec.dagId`, so it can
+  collide with another DAG in the same Airflow. The operator can't prevent
+  that without running the code.
 
 ## Project Architecture
 

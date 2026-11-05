@@ -74,7 +74,7 @@ def _s3_backend(mock_client):
 
 def test_s3_backend_read_write_delete():
     mock_client = MagicMock()
-    mock_client.get_object.return_value = {"Body": MagicMock(read=lambda: b"data")}
+    mock_client.get_object.return_value = {"Body": MagicMock(read=lambda *a: b"data")}
     backend = _s3_backend(mock_client)
 
     assert backend.read("d.py") == b"data"
@@ -117,7 +117,9 @@ def _gcs_backend(mock_session):
 
 def test_gcs_backend_read_write_delete():
     mock_session = MagicMock()
-    mock_session.get.return_value = MagicMock(status_code=200, content=b"data")
+    mock_session.get.return_value = MagicMock(
+        status_code=200, iter_content=MagicMock(return_value=[b"data"])
+    )
     backend = _gcs_backend(mock_session)
 
     assert backend.read("d.py") == b"data"
@@ -150,9 +152,78 @@ def test_read_object_rejects_file_uri():
 
 def test_read_object_s3():
     mock_client = MagicMock()
-    mock_client.get_object.return_value = {"Body": MagicMock(read=lambda: b"data")}
+    mock_client.get_object.return_value = {"Body": MagicMock(read=lambda *a: b"data")}
     with patch("boto3.client", return_value=mock_client):
         assert dag_storage.read_object("s3://bucket/staging/d.py") == b"data"
-    mock_client.get_object.assert_called_once_with(
-        Bucket="bucket", Key="staging/d.py"
+    mock_client.get_object.assert_called_once_with(Bucket="bucket", Key="staging/d.py")
+
+
+# --- size caps -------------------------------------------------------------
+
+
+def test_file_backend_read_is_capped(tmp_path, monkeypatch):
+    monkeypatch.setattr(dag_storage, "MAX_OBJECT_BYTES", 4)
+    backend = dag_storage._FileBackend(str(tmp_path))
+    backend.write("d.py", b"too long")
+    with pytest.raises(dag_storage.ObjectTooLarge):
+        backend.read("d.py")
+
+
+def test_s3_backend_read_is_capped_by_content_length(monkeypatch):
+    monkeypatch.setattr(dag_storage, "MAX_OBJECT_BYTES", 4)
+    body = MagicMock()
+    mock_client = MagicMock()
+    mock_client.get_object.return_value = {"Body": body, "ContentLength": 5}
+    with pytest.raises(dag_storage.ObjectTooLarge):
+        _s3_backend(mock_client).read("d.py")
+    body.read.assert_not_called()
+
+
+def test_gcs_backend_read_is_capped_while_streaming(monkeypatch):
+    monkeypatch.setattr(dag_storage, "MAX_OBJECT_BYTES", 4)
+    mock_session = MagicMock()
+    mock_session.get.return_value = MagicMock(
+        status_code=200, iter_content=MagicMock(return_value=[b"abc", b"def"])
     )
+    with pytest.raises(dag_storage.ObjectTooLarge):
+        _gcs_backend(mock_session).read("d.py")
+    assert mock_session.get.call_args.kwargs["timeout"] == dag_storage._HTTP_TIMEOUT
+
+
+# --- source_allowed (objectRef allowlist) -----------------------------------
+
+
+def test_source_allowed_denies_everything_by_default(monkeypatch):
+    monkeypatch.delenv("AIRFLOW_DAGS_SOURCE_PREFIXES", raising=False)
+    assert not dag_storage.source_allowed("gs://bucket/dags/d.py")
+
+
+@pytest.mark.parametrize(
+    "uri, allowed",
+    [
+        ("gs://staging/dags/d.py", True),
+        ("gs://staging/dags/team/d.zip", True),
+        ("s3://mwaa/incoming/d.py", True),
+        ("gs://staging/dags-evil/d.py", False),
+        ("gs://staging/other/d.py", False),
+        ("gs://staging-evil/dags/d.py", False),
+        ("s3://staging/dags/d.py", False),
+        ("gs://staging/dags/../secrets/key.json", False),
+        ("gs://staging/dags//d.py", False),
+        ("gs://staging/dags/", False),
+        ("file:///staging/dags/d.py", False),
+        ("not a uri", False),
+    ],
+)
+def test_source_allowed_matches_whole_prefix_segments(monkeypatch, uri, allowed):
+    monkeypatch.setenv(
+        "AIRFLOW_DAGS_SOURCE_PREFIXES",
+        "gs://staging/dags, s3://mwaa/incoming/, file:///staging, bogus",
+    )
+    assert dag_storage.source_allowed(uri) is allowed
+
+
+def test_source_allowed_whole_bucket_prefix(monkeypatch):
+    monkeypatch.setenv("AIRFLOW_DAGS_SOURCE_PREFIXES", "gs://staging")
+    assert dag_storage.source_allowed("gs://staging/any/d.py")
+    assert not dag_storage.source_allowed("gs://staging-evil/d.py")

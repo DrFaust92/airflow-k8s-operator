@@ -23,9 +23,7 @@ def get_config_map_value(
 
         v1 = client.CoreV1Api()
         config_map = v1.read_namespaced_config_map(config_map_name, namespace)
-        logger.info(
-            f"Fetched ConfigMap {config_map_name} from namespace {namespace}"
-        )
+        logger.info(f"Fetched ConfigMap {config_map_name} from namespace {namespace}")
 
         if config_map.data and config_map_key in config_map.data:
             return config_map.data[config_map_key].encode("utf-8")

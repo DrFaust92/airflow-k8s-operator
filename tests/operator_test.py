@@ -164,12 +164,9 @@ def test_operator():
 
         # Dag: adopt an example DAG (loaded via AIRFLOW__CORE__LOAD_EXAMPLES in
         # CI) -> Synced + paused in Airflow; update -> unpaused; delete -> CR
-        # released cleanly. The Synced wait also absorbs DAG-parse latency.
-        # Airflow-side absence is not asserted after delete: the DAG file still
-        # exists, so the next parse recreates the record nondeterministically.
-        subprocess.run(
-            f"kubectl apply -f {TEST_PATH}/dag.yaml", shell=True, check=True
-        )
+        # released cleanly and the DAG left in Airflow (deleteDag is unset).
+        # The Synced wait also absorbs DAG-parse latency.
+        subprocess.run(f"kubectl apply -f {TEST_PATH}/dag.yaml", shell=True, check=True)
         _wait_for_synced("dag", "example-dag")
         adopted_dag = _airflow_get(dag_api.get_dag, "example_bash_operator")
         assert adopted_dag is not None and adopted_dag.get("is_paused") is True, (
@@ -194,6 +191,7 @@ def test_operator():
             check=True,
             timeout=120,
         )
+        assert _airflow_get(dag_api.get_dag, "example_bash_operator") is not None
 
         # Dag not found: a CR pointing at a nonexistent dag_id must surface
         # phase=Error (waiting for the DAG to be parsed) and still delete

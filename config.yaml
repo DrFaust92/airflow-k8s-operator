@@ -7,4 +7,4 @@ chart-dirs:
 excluded-charts:
   - airflow-k8s-operator-crds
 helm-lint-extra-args: --set operator.airflowHost=airflow.example.com --set image.tag=ci-test --set image.repository=airflow-k8s-operator
-helm-extra-set-args: --set operator.airflowHost=airflow.example.com --set image.tag=ci-test --set image.repository=airflow-k8s-operator --set operator.basicAuthSecret.enabled=true --set operator.basicAuthSecret.create=true
+helm-extra-set-args: --set operator.airflowHost=airflow.example.com --set image.tag=ci-test --set image.repository=airflow-k8s-operator --set operator.basicAuthSecret.enabled=true --set operator.basicAuthSecret.create=true --set operator.basicAuthSecret.username=admin --set operator.basicAuthSecret.password=admin
