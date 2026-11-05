@@ -1,6 +1,6 @@
 # airflow-k8s-operator
 
-![Version: 0.20.0](https://img.shields.io/badge/Version-0.20.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.9.0](https://img.shields.io/badge/AppVersion-0.9.0-informational?style=flat-square)
+![Version: 0.21.0](https://img.shields.io/badge/Version-0.21.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.9.0](https://img.shields.io/badge/AppVersion-0.9.0-informational?style=flat-square)
 
 A Helm chart for Kubernetes Airflow Operator
 
@@ -43,6 +43,8 @@ A Helm chart for Kubernetes Airflow Operator
 | operator.basicAuthSecret.secretName | string | `"airflow-basic-auth"` | name of the basic auth secret |
 | operator.basicAuthSecret.username | string | `""` | username to store in the created secret (required when create is true) |
 | operator.basicAuthSecret.usernameKey | string | `"AIRFLOW_USERNAME"` | key name for username in the secret |
+| operator.dagsSourcePrefixes | list | `[]` | gs:// or s3:// prefixes that Dag spec.source.objectRef may copy from (e.g. gs://staging-bucket/dags/). objectRef reads with the operator's credentials, so it is denied when this is empty. |
+| operator.dagsUri | string | `""` | destination for DAG uploads (spec.source): gs://bucket/prefix, s3://bucket/prefix, or file:///path (e.g. a PVC added via volumes/volumeMounts). Empty disables DAG upload; Dag resources then adopt existing DAGs only. |
 | operator.livenessProbeAddress | string | `"http://0.0.0.0:{{ .Values.port }}/healthz"` | liveness probe address for the operator |
 | operator.logFormat | string | `"json"` | log format for the operator (full, json, simple) |
 | operator.verbose | bool | `false` | enable kopf verbose (debug) logging |

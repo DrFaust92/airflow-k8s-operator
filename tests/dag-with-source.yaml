@@ -1,0 +1,24 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Dag
+metadata:
+  name: uploaded-dag
+  # namespace: default
+spec:
+  dagId: uploaded_dag
+  isPaused: false
+  source:
+    code: |
+      from airflow.decorators import dag, task
+      import datetime
+
+
+      @dag(schedule=None, start_date=datetime.datetime(2026, 1, 1))
+      def uploaded_dag():
+          @task
+          def hello():
+              print("hello from the operator-delivered DAG")
+
+          hello()
+
+
+      uploaded_dag()

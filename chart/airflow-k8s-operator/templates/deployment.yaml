@@ -65,6 +65,14 @@ spec:
           env:
             - name: AIRFLOW_HOST
               value: {{ tpl .Values.operator.airflowHost . | quote }}
+            {{- if .Values.operator.dagsUri }}
+            - name: AIRFLOW_DAGS_URI
+              value: {{ tpl .Values.operator.dagsUri . | quote }}
+            {{- end }}
+            {{- with .Values.operator.dagsSourcePrefixes }}
+            - name: AIRFLOW_DAGS_SOURCE_PREFIXES
+              value: {{ join "," . | quote }}
+            {{- end }}
             {{- if .Values.livenessProbe }}
             - name: LIVENESS_PROBE
               value: {{ tpl .Values.operator.livenessProbeAddress . | quote }}

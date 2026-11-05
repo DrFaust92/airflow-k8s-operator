@@ -143,6 +143,87 @@ class PoolSpec(BaseModel):
     adopt: bool = Field(default=False, description=_ADOPT_DESC)
 
 
+class ConfigMapRef(BaseModel):
+    """Reference to a key within a Kubernetes ConfigMap."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(description="The name of the Kubernetes ConfigMap.")
+    key: str = Field(
+        description=(
+            "The key within the ConfigMap: a plain-text DAG file in `data`, or "
+            "a base64-encoded zip archive in `binaryData`."
+        )
+    )
+
+
+class DagSourceUrl(BaseModel):
+    """A DAG file or packaged-DAG zip downloaded from an http(s) URL."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str = Field(
+        description=(
+            "The http(s) URL of the DAG file or zip archive. It must resolve to "
+            "a public address and must not contain credentials."
+        )
+    )
+    sha256: str = Field(
+        pattern=r"^[A-Fa-f0-9]{64}$",
+        description=(
+            "Hex-encoded SHA-256 of the content. Required: the URL is fetched "
+            "on every reconcile, so the pin keeps a change at the URL from "
+            "deploying code without a change to this resource."
+        ),
+    )
+
+
+class ObjectRef(BaseModel):
+    """An existing gs:// or s3:// object to copy into the DAGs folder."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    uri: str = Field(
+        description=(
+            "The gs://bucket/path or s3://bucket/path of the object. It must be "
+            "under one of the operator's allowed source prefixes "
+            "(AIRFLOW_DAGS_SOURCE_PREFIXES)."
+        )
+    )
+
+
+class DagSource(BaseModel):
+    """Where the DAG file (or packaged-DAG zip) comes from. Exactly one of
+    code / configMapRef / url / objectRef must be set."""
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "oneOf": [
+                {"required": ["code"]},
+                {"required": ["configMapRef"]},
+                {"required": ["url"]},
+                {"required": ["objectRef"]},
+            ]
+        },
+    )
+
+    code: str | None = Field(
+        default=None, description="Inline Python source of a single DAG file."
+    )
+    configMapRef: ConfigMapRef | None = Field(
+        default=None,
+        description="Reference to a Kubernetes ConfigMap holding the DAG source.",
+    )
+    url: DagSourceUrl | None = Field(
+        default=None, description="An http(s) URL to download the DAG source from."
+    )
+    objectRef: ObjectRef | None = Field(
+        default=None,
+        description="An existing object-store URI to copy the DAG source from.",
+    )
+
+
 class DagSpec(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     crd: ClassVar[dict] = {
@@ -171,6 +252,17 @@ class DagSpec(BaseModel):
             "resource is deleted. By default the DAG is left untouched and only "
             "stops being managed. The DAG reappears on the next parse if its "
             "file still exists."
+        ),
+    )
+    source: DagSource | None = Field(
+        default=None,
+        description=(
+            "Optional DAG source to deliver to the Airflow DAGs folder "
+            "(requires the operator's AIRFLOW_DAGS_URI to be configured). The "
+            "content is uploaded as <dagId>.py, or <dagId>.zip when it is a "
+            "packaged-DAG zip archive; for a zip, dagId names the primary DAG "
+            "whose paused state is managed. Without source, the resource "
+            "adopts a DAG that already exists in Airflow."
         ),
     )
 

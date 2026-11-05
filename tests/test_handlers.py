@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -315,7 +316,9 @@ def test_create_dag_patches_and_marks_synced(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
     patch = _patch()
 
-    dags.create_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=patch)
+    dags.create_dag(
+        spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch
+    )
 
     api.patch_dag.assert_called_once()
     kwargs = api.patch_dag.call_args.kwargs
@@ -330,7 +333,11 @@ def test_dag_id_falls_back_to_resource_name(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
 
     dags.create_dag(
-        spec={"isPaused": False}, name="my-dag-cr", logger=logger, patch=_patch()
+        spec={"isPaused": False},
+        name="my-dag-cr",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
     )
 
     assert api.patch_dag.call_args.kwargs["dag_id"] == "my-dag-cr"
@@ -345,7 +352,9 @@ def test_reconcile_dag_not_found_is_temporary_with_parse_message(monkeypatch):
     patch = _patch()
 
     with pytest.raises(kopf.TemporaryError):
-        dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=patch)
+        dags.reconcile_dag(
+            spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch
+        )
 
     assert patch.status["phase"] == "Error"
     assert "waiting for it to be parsed" in patch.status["message"]
@@ -357,7 +366,9 @@ def test_reconcile_dag_bad_request_is_permanent(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
 
     with pytest.raises(kopf.PermanentError):
-        dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=_patch())
+        dags.reconcile_dag(
+            spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
 
 
 def test_reconcile_dag_other_error_raises_temporary(monkeypatch):
@@ -366,14 +377,16 @@ def test_reconcile_dag_other_error_raises_temporary(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
 
     with pytest.raises(kopf.TemporaryError):
-        dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=_patch())
+        dags.reconcile_dag(
+            spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
 
 
 def test_delete_dag_leaves_airflow_untouched_by_default(monkeypatch):
     api = MagicMock()
     monkeypatch.setattr(dags, "dags_api", api)
 
-    dags.delete_dag(spec=DAG_SPEC, name="d1", logger=logger)
+    dags.delete_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger)
     api.delete_dag.assert_not_called()
 
 
@@ -382,7 +395,9 @@ def test_delete_dag_opt_in_calls_airflow_and_ignores_not_found(monkeypatch):
     api.delete_dag.side_effect = NotFoundException(status=404, reason="Not Found")
     monkeypatch.setattr(dags, "dags_api", api)
 
-    dags.delete_dag(spec={**DAG_SPEC, "deleteDag": True}, name="d1", logger=logger)
+    dags.delete_dag(
+        spec={**DAG_SPEC, "deleteDag": True}, name="d1", namespace="ns", logger=logger
+    )
     assert api.delete_dag.call_args.kwargs["dag_id"] == "my_dag"
 
 
@@ -392,7 +407,492 @@ def test_delete_dag_other_error_raises_temporary(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
 
     with pytest.raises(kopf.TemporaryError):
-        dags.delete_dag(spec={**DAG_SPEC, "deleteDag": True}, name="d1", logger=logger)
+        dags.delete_dag(
+            spec={**DAG_SPEC, "deleteDag": True},
+            name="d1",
+            namespace="ns",
+            logger=logger,
+        )
+
+
+# --- dags: source delivery (spec.source -> DAGs folder) --------------------
+
+
+class FakeBackend:
+    def __init__(self):
+        self.store = {}
+        self.writes = 0
+
+    def read(self, name):
+        return self.store.get(name)
+
+    def write(self, name, data):
+        self.store[name] = data
+        self.writes += 1
+
+    def delete(self, name):
+        self.store.pop(name, None)
+
+
+SOURCED_DAG_SPEC = {
+    "dagId": "my_dag",
+    "isPaused": True,
+    "source": {"code": "print('hello')\n"},
+}
+
+
+def _sourced(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    backend = FakeBackend()
+    monkeypatch.setattr(dags, "get_backend", lambda: backend)
+    return api, backend
+
+
+def test_sourced_create_uploads_with_marker_then_patches(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    patch = _patch()
+
+    dags.create_dag(
+        spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch
+    )
+
+    uploaded = backend.store["my_dag.py"]
+    assert uploaded.startswith(b"# managed-by: airflow-k8s-operator dag=ns/d1\n")
+    assert b"print('hello')" in uploaded
+    api.patch_dag.assert_called_once()
+    assert patch.status["phase"] == "Synced"
+
+
+def test_sourced_reconcile_is_idempotent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+
+    for _ in range(2):
+        dags.reconcile_dag(
+            spec=SOURCED_DAG_SPEC,
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+        )
+
+    assert backend.writes == 1
+
+
+def test_sourced_zip_uploads_with_comment_marker(monkeypatch):
+    import io
+    import zipfile
+
+    api, backend = _sourced(monkeypatch)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("my_dag.py", "print('zipped')\n")
+    spec = {
+        "dagId": "my_dag",
+        "isPaused": True,
+        "source": {"configMapRef": {"name": "cm", "key": "dag.zip"}},
+    }
+    monkeypatch.setattr(dags, "get_config_map_value", lambda *a, **k: buf.getvalue())
+
+    dags.create_dag(spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch())
+
+    uploaded = backend.store["my_dag.zip"]
+    comment = zipfile.ZipFile(io.BytesIO(uploaded)).comment.decode()
+    assert comment == "managed-by: airflow-k8s-operator dag=ns/d1"
+
+
+def test_unsourced_dag_never_touches_storage(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    backend_factory = MagicMock()
+    monkeypatch.setattr(dags, "get_backend", backend_factory)
+
+    dags.reconcile_dag(
+        spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+    )
+
+    backend_factory.assert_not_called()
+
+
+def test_sourced_dag_without_backend_is_permanent(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+    monkeypatch.setattr(dags, "get_backend", lambda: None)
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=SOURCED_DAG_SPEC,
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+        )
+    api.patch_dag.assert_not_called()
+
+
+def test_sourced_dag_refuses_foreign_file(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    backend.store["my_dag.py"] = b"# hand-managed\nprint('mine')\n"
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=SOURCED_DAG_SPEC,
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+        )
+    assert backend.store["my_dag.py"] == b"# hand-managed\nprint('mine')\n"
+
+
+def test_sourced_dag_syntax_error_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "source": {"code": "def broken(:\n"}}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_dag_id_with_path_traversal_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "dagId": "../../etc/cron.d/evil"}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+def test_sourced_dag_id_too_long_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "dagId": "d" * 251}
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    assert backend.store == {}
+
+
+# --- dags: url sources -----------------------------------------------------
+
+DAG_PY = b"print('x')\n"
+DAG_PY_SHA = hashlib.sha256(DAG_PY).hexdigest()
+PUBLIC_IP = "93.184.216.34"
+
+
+class FakeResponse:
+    def __init__(self, status=200, body=b"", headers=None):
+        self.status = status
+        self.headers = headers or {}
+        self._body = body
+
+    def stream(self, amt):
+        for i in range(0, len(self._body), amt):
+            yield self._body[i : i + amt]
+
+    def release_conn(self):
+        pass
+
+
+class FakePool:
+    def __init__(self, host, port, responses, **kwargs):
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
+        self.requests = []
+        self._responses = responses
+
+    def urlopen(self, method, path, **kwargs):
+        self.requests.append((method, path, kwargs))
+        return self._responses.pop(0)
+
+    def close(self):
+        pass
+
+
+def _fake_http(monkeypatch, responses, resolve=None):
+    """Route url fetches to canned responses; ``resolve`` maps host -> IPs."""
+    resolve = resolve or (lambda host: [PUBLIC_IP])
+    monkeypatch.setattr(
+        dags.socket,
+        "getaddrinfo",
+        lambda host, port, **k: [(2, 1, 6, "", (ip, port)) for ip in resolve(host)],
+    )
+    pools = []
+
+    def factory(host, port, **kwargs):
+        pool = FakePool(host, port, responses, **kwargs)
+        pools.append(pool)
+        return pool
+
+    monkeypatch.setattr(dags.urllib3, "HTTPSConnectionPool", factory)
+    monkeypatch.setattr(dags.urllib3, "HTTPConnectionPool", factory)
+    return pools
+
+
+def _url_spec(url, sha256=DAG_PY_SHA):
+    return {**SOURCED_DAG_SPEC, "source": {"url": {"url": url, "sha256": sha256}}}
+
+
+def _create(spec):
+    dags.create_dag(spec=spec, name="d1", namespace="ns", logger=logger, patch=_patch())
+
+
+def test_url_source_requires_sha256():
+    from pydantic import ValidationError
+
+    from resources.schemas import DagSourceUrl
+
+    with pytest.raises(ValidationError):
+        DagSourceUrl.model_validate({"url": "https://example.com/dag.py"})
+    with pytest.raises(ValidationError):
+        DagSourceUrl.model_validate(
+            {"url": "https://example.com/dag.py", "sha256": "not-a-digest"}
+        )
+
+
+def test_url_fetch_connects_to_vetted_address_and_verifies_host(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    pools = _fake_http(monkeypatch, [FakeResponse(body=DAG_PY)])
+
+    _create(_url_spec("https://example.com/dags/dag.py?v=1"))
+
+    (pool,) = pools
+    assert pool.host == PUBLIC_IP
+    assert pool.kwargs["server_hostname"] == "example.com"
+    assert pool.kwargs["assert_hostname"] == "example.com"
+    assert pool.kwargs["cert_reqs"] == "CERT_REQUIRED"
+    method, path, kwargs = pool.requests[0]
+    assert (method, path) == ("GET", "/dags/dag.py?v=1")
+    assert kwargs["headers"]["Host"] == "example.com"
+    assert kwargs["redirect"] is False
+    assert b"print('x')" in backend.store["my_dag.py"]
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "10.0.0.1",
+        "172.16.0.1",
+        "192.168.1.1",
+        "127.0.0.1",
+        "169.254.169.254",
+        "100.64.0.1",
+        "0.0.0.0",
+        "224.0.0.1",
+        "240.0.0.1",
+        "::1",
+        "fd00::1",
+        "fe80::1",
+        "::ffff:169.254.169.254",
+        "64:ff9b::a9fe:a9fe",
+        "2002:a9fe:a9fe::1",
+    ],
+)
+def test_url_non_public_address_is_permanent(monkeypatch, address):
+    api, backend = _sourced(monkeypatch)
+    pools = _fake_http(monkeypatch, [], resolve=lambda host: [address])
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_url_spec("http://internal.example/dag.py"))
+    assert pools == []
+    assert backend.store == {}
+
+
+def test_url_rejected_if_any_resolved_address_is_internal(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    pools = _fake_http(
+        monkeypatch, [], resolve=lambda host: [PUBLIC_IP, "169.254.169.254"]
+    )
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_url_spec("https://example.com/dag.py"))
+    assert pools == []
+
+
+def test_url_redirect_target_is_rechecked(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    redirect = FakeResponse(302, headers={"location": "http://internal.example/x"})
+    pools = _fake_http(
+        monkeypatch,
+        [redirect],
+        resolve=lambda host: [PUBLIC_IP if host == "example.com" else "10.0.0.5"],
+    )
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_url_spec("https://example.com/dag.py"))
+    assert len(pools) == 1
+    assert backend.store == {}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "ftp://example.com/dag.py",
+        "https://user:s3cr3t@example.com/dag.py",
+    ],
+)
+def test_url_bad_scheme_or_credentials_is_permanent(monkeypatch, url):
+    api, backend = _sourced(monkeypatch)
+    pools = _fake_http(monkeypatch, [])
+
+    with pytest.raises(kopf.PermanentError) as err:
+        _create(_url_spec(url))
+    assert "s3cr3t" not in str(err.value)
+    assert pools == []
+
+
+def test_url_sha256_mismatch_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    _fake_http(monkeypatch, [FakeResponse(body=DAG_PY)])
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_url_spec("https://example.com/dag.py", sha256="0" * 64))
+    assert backend.store == {}
+
+
+def test_url_download_size_is_capped(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.setattr(dags, "MAX_OBJECT_BYTES", 8)
+    _fake_http(monkeypatch, [FakeResponse(body=b"x" * 100)])
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_url_spec("https://example.com/dag.py"))
+
+
+def test_url_error_message_redacts_query(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    _fake_http(monkeypatch, [FakeResponse(503)])
+    patch = _patch()
+
+    with pytest.raises(kopf.TemporaryError) as err:
+        dags.create_dag(
+            spec=_url_spec("https://example.com/dag.py?X-Amz-Signature=s3cr3t"),
+            name="d1",
+            namespace="ns",
+            logger=logger,
+            patch=patch,
+        )
+    assert "s3cr3t" not in str(err.value)
+    assert "s3cr3t" not in patch.status["message"]
+
+
+# --- dags: objectRef sources -----------------------------------------------
+
+
+def _object_spec(uri):
+    return {**SOURCED_DAG_SPEC, "source": {"objectRef": {"uri": uri}}}
+
+
+def test_object_ref_denied_without_allowed_prefix(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.delenv("AIRFLOW_DAGS_SOURCE_PREFIXES", raising=False)
+    read = MagicMock()
+    monkeypatch.setattr(dags, "read_object", read)
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_object_spec("gs://other-bucket/secrets.py"))
+    read.assert_not_called()
+
+
+def test_object_ref_allowed_under_prefix(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.setenv("AIRFLOW_DAGS_SOURCE_PREFIXES", "gs://staging/dags/")
+    monkeypatch.setattr(dags, "read_object", lambda uri: DAG_PY)
+
+    _create(_object_spec("gs://staging/dags/team-a/dag.py"))
+    assert b"print('x')" in backend.store["my_dag.py"]
+
+
+def test_object_ref_too_large_is_permanent(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    monkeypatch.setenv("AIRFLOW_DAGS_SOURCE_PREFIXES", "gs://staging/dags/")
+
+    def too_large(uri):
+        raise dags.ObjectTooLarge("too big")
+
+    monkeypatch.setattr(dags, "read_object", too_large)
+
+    with pytest.raises(kopf.PermanentError):
+        _create(_object_spec("gs://staging/dags/big.zip"))
+
+
+def test_oversized_existing_file_is_treated_as_foreign(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+
+    def read(name):
+        raise dags.ObjectTooLarge("too big")
+
+    backend.read = read
+
+    with pytest.raises(kopf.PermanentError):
+        _create(SOURCED_DAG_SPEC)
+    assert backend.writes == 0
+
+
+# --- dags: deletion with a source ------------------------------------------
+
+
+def test_sourced_delete_removes_owned_file_and_keeps_dag_record(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    _create(SOURCED_DAG_SPEC)
+    assert "my_dag.py" in backend.store
+
+    dags.delete_dag(spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+    assert backend.store == {}
+    api.delete_dag.assert_not_called()
+
+
+def test_sourced_delete_with_delete_dag_also_deletes_record(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "deleteDag": True}
+    _create(spec)
+
+    dags.delete_dag(spec=spec, name="d1", namespace="ns", logger=logger)
+
+    assert backend.store == {}
+    assert api.delete_dag.call_args.kwargs["dag_id"] == "my_dag"
+
+
+def test_delete_removes_owned_file_after_source_was_dropped(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    _create(SOURCED_DAG_SPEC)
+
+    dags.delete_dag(spec=DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+    assert backend.store == {}
+
+
+def test_sourced_delete_leaves_foreign_file(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    backend.store["my_dag.py"] = b"# hand-managed\nprint('mine')\n"
+
+    dags.delete_dag(spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+    assert backend.store["my_dag.py"] == b"# hand-managed\nprint('mine')\n"
+    api.delete_dag.assert_not_called()
+
+
+def test_delete_leaves_file_owned_by_another_namespace(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    dags.create_dag(
+        spec=SOURCED_DAG_SPEC,
+        name="d1",
+        namespace="other",
+        logger=logger,
+        patch=_patch(),
+    )
+
+    dags.delete_dag(spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger)
+
+    assert "my_dag.py" in backend.store
 
 
 # --- team_name (Airflow 3 / v2 multi-team field) --------------------------
