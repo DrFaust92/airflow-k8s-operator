@@ -10,7 +10,14 @@ from config.base import (
 )
 from config.client import api_client
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import DELETE_MAX_RETRIES, adopt_conflict, owns, track
+from config.reconcile import (
+    DELETE_MAX_RETRIES,
+    adopt_conflict,
+    adoption_allowed,
+    adoption_denied,
+    owns,
+    track,
+)
 from resources.schemas import PoolSpec
 
 pools_api = PoolApi(api_client=api_client)
@@ -31,9 +38,11 @@ def _build_pool(name, spec) -> Pool:
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "pools")
-def create_pool(spec, name, logger, patch, **kwargs):
+def create_pool(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Pool: {name}")
     with track("pool", "create", logger, patch=patch):
+        if PoolSpec.model_validate(spec).adopt and not adoption_allowed(namespace):
+            raise adoption_denied("Pool", name, namespace)
         pool = _build_pool(name, spec)
         try:
             pools_api.post_pool(pool, _preload_content=False)
@@ -58,9 +67,9 @@ def create_pool(spec, name, logger, patch, **kwargs):
     interval=OPERATOR_RECONCILE_INTERVAL,
     initial_delay=OPERATOR_RECONCILE_INTERVAL_DELAY,
 )
-def reconcile_pool(spec, name, logger, patch, status=None, **kwargs):
+def reconcile_pool(spec, name, namespace, logger, patch, status=None, **kwargs):
     logger.info(f"Reconciling Airflow Pool: {name}")
-    if not owns(status, "create_pool", PoolSpec.model_validate(spec).adopt):
+    if not owns(status, "create_pool", PoolSpec.model_validate(spec).adopt, namespace):
         logger.info(f"Pool {name} is not managed by this resource; skipping")
         return None
     with track("pool", "update", logger, patch=patch):
@@ -74,11 +83,11 @@ def reconcile_pool(spec, name, logger, patch, status=None, **kwargs):
 
 
 @kopf.on.delete("airflow.drfaust92", "v1beta1", "pools", retries=DELETE_MAX_RETRIES)
-def delete_pool(spec, name, logger, retry=0, status=None, **kwargs):
+def delete_pool(spec, name, namespace, logger, retry=0, status=None, **kwargs):
     # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
     # attempts kopf gives up and releases the finalizer instead of wedging the
     # resource forever. The final attempt emits a Warning event + metric.
-    if not owns(status, "create_pool", PoolSpec.model_validate(spec).adopt):
+    if not owns(status, "create_pool", PoolSpec.model_validate(spec).adopt, namespace):
         logger.info(f"Pool {name} is not managed by this resource; leaving it")
         return {"message": f"Pool {name} left in Airflow (not managed)."}
     logger.info(f"Deleting Airflow Pool: {name}")

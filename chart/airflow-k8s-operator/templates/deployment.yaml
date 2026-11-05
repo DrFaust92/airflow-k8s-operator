@@ -69,6 +69,8 @@ spec:
             - name: AIRFLOW_DAGS_URI
               value: {{ tpl .Values.operator.dagsUri . | quote }}
             {{- end }}
+            - name: AIRFLOW_ADOPT_NAMESPACES
+              value: {{ .Values.operator.adoptNamespaces | default (list .Release.Namespace) | join "," | quote }}
             {{- with .Values.operator.dagsSourcePrefixes }}
             - name: AIRFLOW_DAGS_SOURCE_PREFIXES
               value: {{ join "," . | quote }}

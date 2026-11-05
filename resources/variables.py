@@ -11,7 +11,14 @@ from config.base import (
 from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import DELETE_MAX_RETRIES, adopt_conflict, owns, track
+from config.reconcile import (
+    DELETE_MAX_RETRIES,
+    adopt_conflict,
+    adoption_allowed,
+    adoption_denied,
+    owns,
+    track,
+)
 from resources.schemas import VariableSpec
 
 variables_api = VariableApi(api_client=api_client)
@@ -45,6 +52,8 @@ def _exists(name) -> bool:
 def create_variable(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Variable: {name}")
     with track("variable", "create", logger, patch=patch):
+        if VariableSpec.model_validate(spec).adopt and not adoption_allowed(namespace):
+            raise adoption_denied("Variable", name, namespace)
         variable = _build_variable(name, spec, namespace, logger)
         adopt = VariableSpec.model_validate(spec).adopt
         # Airflow 2's POST /variables overwrites an existing key instead of
@@ -78,7 +87,9 @@ def create_variable(spec, name, namespace, logger, patch, **kwargs):
 )
 def reconcile_variable(spec, name, namespace, logger, patch, status=None, **kwargs):
     logger.info(f"Reconciling Airflow Variable: {name}")
-    if not owns(status, "create_variable", VariableSpec.model_validate(spec).adopt):
+    if not owns(
+        status, "create_variable", VariableSpec.model_validate(spec).adopt, namespace
+    ):
         logger.info(f"Variable {name} is not managed by this resource; skipping")
         return None
     with track("variable", "update", logger, patch=patch):
@@ -98,7 +109,9 @@ def delete_variable(spec, name, namespace, logger, retry=0, status=None, **kwarg
     # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
     # attempts kopf gives up and releases the finalizer instead of wedging the
     # resource forever. The final attempt emits a Warning event + metric.
-    if not owns(status, "create_variable", VariableSpec.model_validate(spec).adopt):
+    if not owns(
+        status, "create_variable", VariableSpec.model_validate(spec).adopt, namespace
+    ):
         logger.info(f"Variable {name} is not managed by this resource; leaving it")
         return {"message": f"Variable {name} left in Airflow (not managed)."}
     logger.info(f"Deleting Airflow Variable: {name}")

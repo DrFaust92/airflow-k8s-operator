@@ -1,6 +1,8 @@
 import hashlib
 import io
 import ipaddress
+import json
+import pathlib
 import re
 import socket
 import time
@@ -28,7 +30,12 @@ from config.dag_storage import (
 )
 from config.k8s_configmap import get_config_map_value
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import DELETE_MAX_RETRIES, track
+from config.reconcile import (
+    DELETE_MAX_RETRIES,
+    adoption_allowed,
+    adoption_denied,
+    track,
+)
 from resources.schemas import DagSpec
 
 dags_api = DAGApi(api_client=api_client)
@@ -310,7 +317,7 @@ def _deliver(namespace, name, dag_id, parsed, logger):
     filename, desired = _prepare(data, dag_id, marker)
     existing = _read_existing(backend, filename)
     if existing == desired:
-        return
+        return filename
     if existing is not None and not _owned(existing, marker):
         raise kopf.PermanentError(
             f"{filename} already exists in the DAGs folder and is not managed "
@@ -323,6 +330,7 @@ def _deliver(namespace, name, dag_id, parsed, logger):
     _delete_owned_files(
         backend, dag_id, marker, logger, only=_other_filename(dag_id, filename)
     )
+    return filename
 
 
 def _other_filename(dag_id: str, filename: str) -> str:
@@ -345,6 +353,39 @@ def _delete_owned_files(backend, dag_id, marker, logger, only=None, quiet=False)
         backend.delete(filename)
 
 
+def _fileloc(dag_id: str) -> str:
+    """The file Airflow parsed the DAG from."""
+    try:
+        resp = dags_api.get_dag(dag_id=dag_id, _preload_content=False)
+    except NotFoundException as e:
+        raise kopf.TemporaryError(
+            f"DAG {dag_id} not found in Airflow; waiting for it to be parsed",
+            delay=30,
+        ) from e
+    return json.loads(resp.data).get("fileloc") or ""
+
+
+def _defined_by(fileloc: str, filename: str) -> bool:
+    # A packaged DAG's fileloc is the zip path plus the module inside it.
+    return filename in pathlib.PurePosixPath(fileloc).parts
+
+
+def _require_own_file(dag_id: str, filename: str):
+    """Refuse to manage a DAG that Airflow loaded from some other file.
+
+    A delivered file is named after spec.dagId, but its code can define any
+    dag_id, and a resource could point spec.dagId at someone else's DAG while
+    shipping a dummy file. Only the DAG that comes from this resource's own
+    file is its to pause or delete.
+    """
+    fileloc = _fileloc(dag_id)
+    if not _defined_by(fileloc, filename):
+        raise kopf.PermanentError(
+            f"DAG {dag_id} is loaded from {pathlib.PurePosixPath(fileloc).name or 'an unknown file'}, "
+            f"not from {filename} delivered by this resource; refusing to manage it"
+        )
+
+
 def _patch_dag(name, spec, namespace, logger):
     # DAGs cannot be created via the API (they come from DAG files). With
     # spec.source the operator delivers the file to the DAGs folder first;
@@ -354,7 +395,11 @@ def _patch_dag(name, spec, namespace, logger):
     parsed = DagSpec.model_validate(spec)
     dag_id = parsed.dag_id or name
     if parsed.source is not None:
-        _deliver(namespace, name, dag_id, parsed, logger)
+        filename = _deliver(namespace, name, dag_id, parsed, logger)
+        _require_own_file(dag_id, filename)
+    elif not adoption_allowed(namespace):
+        # Without a source every Dag resource adopts an existing DAG.
+        raise adoption_denied("Dag", name, namespace)
     try:
         dags_api.patch_dag(
             dag_id=dag_id,
@@ -367,6 +412,26 @@ def _patch_dag(name, spec, namespace, logger):
             f"DAG {dag_id} not found in Airflow; waiting for it to be parsed",
             delay=30,
         ) from e
+
+
+def _may_delete_record(backend, dag_id, namespace, name) -> bool:
+    """Whether deleting this resource may delete the DAG's Airflow record:
+    the DAG comes from a file this resource delivered, or (with no such file)
+    the namespace may adopt existing DAGs."""
+    if backend is not None and _SAFE_DAG_ID.fullmatch(dag_id):
+        marker = _marker(namespace, name)
+        owned = [
+            f
+            for f in (f"{dag_id}.py", f"{dag_id}.zip")
+            if (data := _read_existing(backend, f)) and _owned(data, marker)
+        ]
+        if owned:
+            try:
+                fileloc = _fileloc(dag_id)
+            except kopf.TemporaryError:
+                return False
+            return any(_defined_by(fileloc, f) for f in owned)
+    return adoption_allowed(namespace)
 
 
 @kopf.on.create("airflow.drfaust92", "v1beta1", "dags")
@@ -415,6 +480,11 @@ def delete_dag(spec, name, namespace, logger, retry=0, **kwargs):
         parsed = DagSpec.model_validate(spec)
         dag_id = parsed.dag_id or name
         backend = get_backend()
+        # Decide before the files go: whether the DAG record is this
+        # resource's depends on which file Airflow loaded it from.
+        may_delete_record = parsed.delete_dag and _may_delete_record(
+            backend, dag_id, namespace, name
+        )
         if backend is not None and _SAFE_DAG_ID.fullmatch(dag_id):
             _delete_owned_files(
                 backend,
@@ -423,12 +493,12 @@ def delete_dag(spec, name, namespace, logger, retry=0, **kwargs):
                 logger,
                 quiet=parsed.source is None,
             )
-        if parsed.delete_dag:
+        if may_delete_record:
             try:
                 dags_api.delete_dag(dag_id=dag_id, _preload_content=False)
             except NotFoundException:
                 logger.info(f"DAG {name} already absent in Airflow")
         else:
-            logger.info(f"Leaving DAG {name} in Airflow; deleteDag is not set")
+            logger.info(f"Leaving DAG {name} in Airflow")
         MANAGED_RESOURCES.labels(resource_type="dag").dec()
     return {"message": f"DAG {name} deleted successfully."}
