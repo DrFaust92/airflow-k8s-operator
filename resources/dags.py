@@ -15,10 +15,6 @@ from resources.schemas import DagSpec
 dags_api = DAGApi(api_client=api_client)
 
 
-def _dag_id(name, spec) -> str:
-    return DagSpec.model_validate(spec).dag_id or name
-
-
 def _patch_dag(name, spec):
     # DAGs cannot be created via the API (they come from DAG files), so both
     # create and reconcile are the same operation: adopt the existing DAG and
@@ -70,13 +66,22 @@ def delete_dag(spec, name, logger, retry=0, **kwargs):
     # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
     # attempts kopf gives up and releases the finalizer instead of wedging the
     # resource forever. The final attempt emits a Warning event + metric.
-    logger.info(f"Deleting Airflow DAG: {name}")
+    #
+    # The DAG was adopted, not created, and its file still exists, so deleting
+    # the record would only wipe its history. Keep it unless asked otherwise.
+    logger.info(f"Deleting Airflow DAG resource: {name}")
     with track(
         "dag", "delete", logger, delay=10, retry=retry, max_retries=DELETE_MAX_RETRIES
     ):
-        try:
-            dags_api.delete_dag(dag_id=_dag_id(name, spec), _preload_content=False)
-        except NotFoundException:
-            logger.info(f"DAG {name} already absent in Airflow")
+        parsed = DagSpec.model_validate(spec)
+        if parsed.delete_dag:
+            try:
+                dags_api.delete_dag(
+                    dag_id=parsed.dag_id or name, _preload_content=False
+                )
+            except NotFoundException:
+                logger.info(f"DAG {name} already absent in Airflow")
+        else:
+            logger.info(f"Leaving DAG {name} in Airflow; deleteDag is not set")
         MANAGED_RESOURCES.labels(resource_type="dag").dec()
     return {"message": f"DAG {name} deleted successfully."}

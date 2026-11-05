@@ -37,9 +37,12 @@ spec:
             properties:
               dagId:
                 type: string
-                description: The DAG ID in Airflow. Defaults to the resource name. DAGs cannot be created through the Airflow API -- they come from DAG files -- so this resource adopts an existing DAG and manages its paused state. Deleting the resource deletes the DAG's metadata/history in Airflow; the DAG reappears on the next parse if its file still exists.
+                description: The DAG ID in Airflow. Defaults to the resource name. DAGs cannot be created through the Airflow API -- they come from DAG files -- so this resource adopts an existing DAG and manages its paused state.
               isPaused:
                 description: Whether the DAG is paused.
+                type: boolean
+              deleteDag:
+                description: Delete the DAG's metadata and run history from Airflow when this resource is deleted. By default the DAG is left untouched and only stops being managed. The DAG reappears on the next parse if its file still exists.
                 type: boolean
             required:
             - isPaused

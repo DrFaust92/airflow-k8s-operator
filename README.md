@@ -9,7 +9,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
 - **Airflow Pools**: Management of Airflow pools
-- **Airflow DAGs**: Adoption of existing DAGs and management of their paused state (DAGs cannot be created via the Airflow API — they come from DAG files)
+- **Airflow DAGs**: Adoption of existing DAGs and management of their paused state (DAGs cannot be created via the Airflow API — they come from DAG files). Deleting a `Dag` resource leaves the DAG in Airflow unless `spec.deleteDag: true` is set, which also deletes its metadata and run history
 
 ## Roadmap (TBD)
 

@@ -230,12 +230,20 @@ def test_reconcile_dag_other_error_raises_temporary(monkeypatch):
         dags.reconcile_dag(spec=DAG_SPEC, name="d1", logger=logger, patch=_patch())
 
 
-def test_delete_dag_calls_airflow_and_ignores_not_found(monkeypatch):
+def test_delete_dag_leaves_airflow_untouched_by_default(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    dags.delete_dag(spec=DAG_SPEC, name="d1", logger=logger)
+    api.delete_dag.assert_not_called()
+
+
+def test_delete_dag_opt_in_calls_airflow_and_ignores_not_found(monkeypatch):
     api = MagicMock()
     api.delete_dag.side_effect = NotFoundException(status=404, reason="Not Found")
     monkeypatch.setattr(dags, "dags_api", api)
 
-    dags.delete_dag(spec=DAG_SPEC, name="d1", logger=logger)
+    dags.delete_dag(spec={**DAG_SPEC, "deleteDag": True}, name="d1", logger=logger)
     assert api.delete_dag.call_args.kwargs["dag_id"] == "my_dag"
 
 
@@ -245,7 +253,7 @@ def test_delete_dag_other_error_raises_temporary(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
 
     with pytest.raises(kopf.TemporaryError):
-        dags.delete_dag(spec=DAG_SPEC, name="d1", logger=logger)
+        dags.delete_dag(spec={**DAG_SPEC, "deleteDag": True}, name="d1", logger=logger)
 
 
 # --- team_name (Airflow 3 / v2 multi-team field) --------------------------
