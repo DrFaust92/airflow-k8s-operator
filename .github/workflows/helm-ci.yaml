@@ -124,5 +124,5 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           trivyignores: .trivyignore
-          version: v0.76.1
+          version: v0.76.2
           cache: "false"
