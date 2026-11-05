@@ -117,6 +117,25 @@ def test_failure_reflects_error_status():
     assert patch.status["phase"] == "Error"
 
 
+def test_http_error_detail_kept_out_of_status_and_retry_message():
+    # The full ApiException text carries response headers and the body (which
+    # for a 422 echoes the request, e.g. a Variable value from a Secret).
+    resp = SimpleNamespace(
+        status=503,
+        reason="Service Unavailable",
+        data=b'{"input": "s3cr3t"}',
+        getheaders=lambda: {"Set-Cookie": "session=abc"},
+    )
+    patch = _patch()
+    with pytest.raises(kopf.TemporaryError) as err:
+        with track("unittest", "update", logger, patch=patch):
+            raise ApiException(http_resp=resp)
+    assert patch.status["message"] == "update failed: HTTP 503 Service Unavailable"
+    for leaked in ("s3cr3t", "session=abc"):
+        assert leaked not in patch.status["message"]
+        assert leaked not in str(err.value)
+
+
 def test_delete_does_not_write_status():
     patch = _patch()
     with track("unittest", "delete", logger, patch=patch):
