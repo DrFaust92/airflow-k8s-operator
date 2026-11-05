@@ -34,12 +34,14 @@ def test_missing_token_raises(monkeypatch):
         MagicMock(
             return_value=MagicMock(
                 raise_for_status=MagicMock(),
-                json=MagicMock(return_value={"detail": "bad creds"}),
+                json=MagicMock(return_value={"jwt": "secret-token"}),
             )
         ),
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError) as err:
         _make()._authorization()
+    assert "secret-token" not in str(err.value)
+    assert "jwt" in str(err.value)
 
 
 def test_retries_once_on_401(monkeypatch):

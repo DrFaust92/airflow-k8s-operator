@@ -77,7 +77,10 @@ class JwtAuthApiClient(client.ApiClient):
         token = data.get("access_token") or data.get("token") or data.get("access")
         if not token:
             AUTH_FAILURES.labels(auth_type="airflow_jwt").inc()
-            raise RuntimeError(f"Airflow token response missing access_token: {data}")
+            # Name the keys only: the values may hold a token under another name.
+            raise RuntimeError(
+                f"Airflow token response missing access_token (keys: {sorted(data)})"
+            )
         self._token = token
         self._expires_at = _jwt_expiry(token)
 
