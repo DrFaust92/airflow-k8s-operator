@@ -81,6 +81,24 @@ def track(
         _set_status(patch, operation, "Synced", f"{operation} succeeded")
 
 
+def owns(status, create_handler: str, adopt: bool) -> bool:
+    """Whether this resource may modify or delete its Airflow object.
+
+    It may if its create handler succeeded (kopf records the handler's result
+    under ``status.<handler id>``) or if it explicitly adopts the object. A
+    resource whose create hit an existing object it may not adopt must not
+    overwrite it on reconcile or delete it with the resource.
+    """
+    return adopt or bool((status or {}).get(create_handler))
+
+
+def adopt_conflict(kind: str, name: str):
+    return kopf.PermanentError(
+        f"{kind} {name} already exists in Airflow and is not managed by this "
+        f"resource; set spec.adopt: true to take it over"
+    )
+
+
 # HTTP statuses that indicate the request itself is invalid and will keep
 # failing until the spec changes -- no point retrying.
 #

@@ -19,6 +19,12 @@ POOL_SPEC = {"slots": 5, "description": "d"}
 DAG_SPEC = {"dagId": "my_dag", "isPaused": True}
 
 
+def _owned(kind):
+    """Status of a resource whose create handler succeeded (kopf stores the
+    handler result under status.<handler id>)."""
+    return {f"create_{kind}": {"message": "created"}}
+
+
 def _patch():
     """A stand-in for kopf's ``patch`` whose ``.status`` is a plain dict."""
     return SimpleNamespace(status={})
@@ -54,6 +60,69 @@ def test_create_connection_failure_raises_and_marks_error(monkeypatch):
     assert patch.status["phase"] == "Error"
 
 
+def test_create_connection_conflict_without_adopt_is_permanent(monkeypatch):
+    # An object that already exists in Airflow is someone else's (another
+    # namespace's resource, or created by hand) unless spec.adopt says so.
+    api = MagicMock()
+    api.post_connection.side_effect = ApiException(status=409, reason="exists")
+    monkeypatch.setattr(connections, "connections_api", api)
+    patch = _patch()
+
+    with pytest.raises(kopf.PermanentError):
+        connections.create_connection(
+            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=patch
+        )
+
+    api.patch_connection.assert_not_called()
+    assert patch.status["phase"] == "Error"
+    assert "spec.adopt" in patch.status["message"]
+
+
+def test_reconcile_connection_skips_unowned(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(connections, "connections_api", api)
+
+    connections.reconcile_connection(
+        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
+    )
+
+    api.patch_connection.assert_not_called()
+    api.post_connection.assert_not_called()
+
+
+def test_delete_connection_leaves_unowned(monkeypatch):
+    api = MagicMock()
+    monkeypatch.setattr(connections, "connections_api", api)
+
+    connections.delete_connection(
+        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger
+    )
+
+    api.delete_connection.assert_not_called()
+
+
+def test_create_variable_conflict_without_adopt_is_permanent(monkeypatch):
+    api = MagicMock()
+    api.post_variables.side_effect = ApiException(status=409, reason="exists")
+    monkeypatch.setattr(variables, "variables_api", api)
+
+    with pytest.raises(kopf.PermanentError):
+        variables.create_variable(
+            spec=VAR_SPEC, name="v1", namespace="ns", logger=logger, patch=_patch()
+        )
+    api.patch_variable.assert_not_called()
+
+
+def test_create_pool_conflict_without_adopt_is_permanent(monkeypatch):
+    api = MagicMock()
+    api.post_pool.side_effect = ApiException(status=409, reason="exists")
+    monkeypatch.setattr(pools, "pools_api", api)
+
+    with pytest.raises(kopf.PermanentError):
+        pools.create_pool(spec=POOL_SPEC, name="p1", logger=logger, patch=_patch())
+    api.patch_pool.assert_not_called()
+
+
 def test_create_connection_adopts_on_conflict(monkeypatch):
     api = MagicMock()
     api.post_connection.side_effect = ApiException(status=409, reason="exists")
@@ -61,7 +130,11 @@ def test_create_connection_adopts_on_conflict(monkeypatch):
     patch = _patch()
 
     connections.create_connection(
-        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=patch
+        spec={**CONN_SPEC, "adopt": True},
+        name="c1",
+        namespace="ns",
+        logger=logger,
+        patch=patch,
     )
 
     # 409 on create -> adopt via patch, and end up Synced (no conflict loop).
@@ -87,7 +160,12 @@ def test_reconcile_connection_patches_when_present(monkeypatch):
     monkeypatch.setattr(connections, "connections_api", api)
 
     connections.reconcile_connection(
-        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
+        spec=CONN_SPEC,
+        name="c1",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
+        status=_owned("connection"),
     )
 
     api.patch_connection.assert_called_once()
@@ -100,7 +178,12 @@ def test_reconcile_connection_recreates_when_missing(monkeypatch):
     monkeypatch.setattr(connections, "connections_api", api)
 
     connections.reconcile_connection(
-        spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
+        spec=CONN_SPEC,
+        name="c1",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
+        status=_owned("connection"),
     )
 
     # Drift heal: patch 404s, so it falls back to creating the connection.
@@ -115,7 +198,12 @@ def test_reconcile_connection_other_error_raises_temporary(monkeypatch):
 
     with pytest.raises(kopf.TemporaryError):
         connections.reconcile_connection(
-            spec=CONN_SPEC, name="c1", namespace="ns", logger=logger, patch=_patch()
+            spec=CONN_SPEC,
+            name="c1",
+            namespace="ns",
+            logger=logger,
+            patch=_patch(),
+            status=_owned("connection"),
         )
 
 
@@ -128,7 +216,13 @@ def test_delete_connection_ignores_not_found(monkeypatch):
 
     # Already-absent delete is a no-op success, not a raise (so the finalizer
     # is released cleanly).
-    connections.delete_connection(name="c1", namespace="ns", logger=logger)
+    connections.delete_connection(
+        spec=CONN_SPEC,
+        name="c1",
+        namespace="ns",
+        logger=logger,
+        status=_owned("connection"),
+    )
     api.delete_connection.assert_called_once()
 
 
@@ -138,7 +232,13 @@ def test_delete_connection_other_error_raises_temporary(monkeypatch):
     monkeypatch.setattr(connections, "connections_api", api)
 
     with pytest.raises(kopf.TemporaryError):
-        connections.delete_connection(name="c1", namespace="ns", logger=logger)
+        connections.delete_connection(
+            spec=CONN_SPEC,
+            name="c1",
+            namespace="ns",
+            logger=logger,
+            status=_owned("connection"),
+        )
 
 
 # --- variables & pools: same upsert contract -----------------------------
@@ -150,7 +250,12 @@ def test_reconcile_variable_recreates_when_missing(monkeypatch):
     monkeypatch.setattr(variables, "variables_api", api)
 
     variables.reconcile_variable(
-        spec=VAR_SPEC, name="v1", namespace="ns", logger=logger, patch=_patch()
+        spec=VAR_SPEC,
+        name="v1",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
+        status=_owned("variable"),
     )
 
     api.patch_variable.assert_called_once()
@@ -162,7 +267,13 @@ def test_reconcile_pool_recreates_when_missing(monkeypatch):
     api.patch_pool.side_effect = NotFoundException(status=404, reason="Not Found")
     monkeypatch.setattr(pools, "pools_api", api)
 
-    pools.reconcile_pool(spec=POOL_SPEC, name="p1", logger=logger, patch=_patch())
+    pools.reconcile_pool(
+        spec=POOL_SPEC,
+        name="p1",
+        logger=logger,
+        patch=_patch(),
+        status=_owned("pool"),
+    )
 
     api.patch_pool.assert_called_once()
     api.post_pool.assert_called_once()
