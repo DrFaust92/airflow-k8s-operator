@@ -44,6 +44,14 @@ class SecretValue(BaseModel):
     )
 
 
+_ADOPT_DESC = (
+    "Take over an object that already exists in Airflow under this name. "
+    "Without it, creating the resource fails with phase=Error when the name is "
+    "taken, and the existing object is never modified or deleted. Keep it set "
+    "for as long as the resource should manage an object it did not create."
+)
+
+
 class ConnectionSpec(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     crd: ClassVar[dict] = {
@@ -78,6 +86,7 @@ class ConnectionSpec(BaseModel):
     team_name: str | None = Field(
         default=None, alias="teamName", description=_TEAM_NAME_DESC
     )
+    adopt: bool = Field(default=False, description=_ADOPT_DESC)
 
 
 class VariableSpec(BaseModel):
@@ -104,6 +113,7 @@ class VariableSpec(BaseModel):
     team_name: str | None = Field(
         default=None, alias="teamName", description=_TEAM_NAME_DESC
     )
+    adopt: bool = Field(default=False, description=_ADOPT_DESC)
 
 
 class PoolSpec(BaseModel):
@@ -130,6 +140,7 @@ class PoolSpec(BaseModel):
     team_name: str | None = Field(
         default=None, alias="teamName", description=_TEAM_NAME_DESC
     )
+    adopt: bool = Field(default=False, description=_ADOPT_DESC)
 
 
 class ConfigMapRef(BaseModel):

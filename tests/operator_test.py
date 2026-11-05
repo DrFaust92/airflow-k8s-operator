@@ -235,9 +235,34 @@ def test_operator():
         )
         _assert_absent(variable_api.get_variable, "example-variable")
 
+        # 409 without adopt: a CR whose name is already taken in Airflow must
+        # surface phase=Error, never overwrite the existing value, and leave
+        # the object in place when the CR is deleted.
+        variable_api.post_variables(
+            Variable(key="unowned-variable", value="pre-existing"),
+            _preload_content=False,
+        )
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/variable-unowned.yaml",
+            shell=True,
+            check=True,
+        )
+        _wait_for_phase("variable", "unowned-variable", "Error", timeout=90)
+        unowned = _airflow_get(variable_api.get_variable, "unowned-variable")
+        assert unowned is not None and unowned.get("value") == "pre-existing", unowned
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/variable-unowned.yaml",
+            shell=True,
+            check=True,
+            timeout=120,
+        )
+        unowned = _airflow_get(variable_api.get_variable, "unowned-variable")
+        assert unowned is not None and unowned.get("value") == "pre-existing", unowned
+        variable_api.delete_variable("unowned-variable", _preload_content=False)
+
         # 409 adopt: pre-create a variable in Airflow, then a CR with the same
-        # name must be adopted (create -> 409 -> patch) and reconciled to the
-        # CR's value, not loop forever on the conflict.
+        # name and spec.adopt must be adopted (create -> 409 -> patch) and
+        # reconciled to the CR's value, not loop forever on the conflict.
         variable_api.post_variables(
             Variable(key="adopted-variable", value="pre-existing"),
             _preload_content=False,

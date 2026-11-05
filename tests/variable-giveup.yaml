@@ -1,0 +1,10 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Variable
+metadata:
+  name: giveup-variable
+  # namespace: default
+spec:
+  value: "unreachable-backend"
+  # Owned from the start, so the delete handler really calls Airflow (and
+  # gives up) even though create never reached the backend.
+  adopt: true

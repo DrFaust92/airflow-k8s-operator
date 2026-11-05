@@ -9,6 +9,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
 - **Airflow Pools**: Management of Airflow pools
+- **Adoption is opt-in**: if a Variable, Connection or Pool with the same name already exists in Airflow, the resource goes to `phase=Error` and the existing object is left untouched. Set `spec.adopt: true` to take it over.
 - **Airflow DAGs**: Adoption of existing DAGs and management of their paused state, and optional delivery of DAG files/packages to the Airflow DAGs folder (GCS, S3, or a mounted volume) — see [Uploading DAGs](#uploading-dags). Deleting a `Dag` resource leaves the DAG record in Airflow unless `spec.deleteDag: true` is set, which also deletes its metadata and run history
 
 ## Roadmap (TBD)

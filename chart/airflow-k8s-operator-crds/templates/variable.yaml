@@ -57,6 +57,9 @@ spec:
               teamName:
                 type: string
                 description: Team for Airflow 3 multi-team mode. Requires multi-team mode enabled and the team to exist in Airflow, otherwise the API may reject the resource. Ignored on Airflow 2.
+              adopt:
+                description: Take over an object that already exists in Airflow under this name. Without it, creating the resource fails with phase=Error when the name is taken, and the existing object is never modified or deleted. Keep it set for as long as the resource should manage an object it did not create.
+                type: boolean
             type: object
             oneOf:
             - required:

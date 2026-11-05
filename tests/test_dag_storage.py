@@ -56,6 +56,17 @@ def test_file_backend_roundtrip(tmp_path):
     backend.delete("d.py")  # missing delete is a no-op
 
 
+def test_file_backend_write_replaces_atomically(tmp_path):
+    root = tmp_path / "dags"
+    backend = dag_storage._FileBackend(str(root))
+    backend.write("d.py", b"old")
+    backend.write("d.py", b"new")
+
+    assert backend.read("d.py") == b"new"
+    # No temp file left behind for Airflow to trip over.
+    assert sorted(p.name for p in root.iterdir()) == ["d.py"]
+
+
 def test_file_backend_rejects_escaping_names(tmp_path):
     backend = dag_storage._FileBackend(str(tmp_path / "dags"))
     with pytest.raises(ValueError):

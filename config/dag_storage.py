@@ -147,7 +147,12 @@ class _FileBackend:
 
     def write(self, name: str, data: bytes):
         self._root.mkdir(parents=True, exist_ok=True)
-        self._path(name).write_bytes(data)
+        path = self._path(name)
+        # Write beside the target and rename over it, so Airflow's parser never
+        # reads a half-written file. The leading dot keeps it out of parsing.
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
 
     def delete(self, name: str):
         self._path(name).unlink(missing_ok=True)

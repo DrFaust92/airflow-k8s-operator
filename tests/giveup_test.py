@@ -25,8 +25,10 @@ def test_delete_gives_up_when_backend_unreachable():
 
         # Create is attempted (and fails against the unreachable backend), but
         # kopf still attaches the finalizer because a delete handler exists.
+        # spec.adopt makes the resource own its Airflow object without a
+        # successful create; otherwise delete would rightly skip Airflow.
         subprocess.run(
-            f"kubectl apply -f {TEST_PATH}/variable.yaml", shell=True, check=True
+            f"kubectl apply -f {TEST_PATH}/variable-giveup.yaml", shell=True, check=True
         )
         time.sleep(5)
 
@@ -35,7 +37,7 @@ def test_delete_gives_up_when_backend_unreachable():
         # broken this would hang until the timeout (-> test failure), because the
         # delete can never succeed against an unreachable backend. ~50s worst case.
         subprocess.run(
-            f"kubectl delete -f {TEST_PATH}/variable.yaml",
+            f"kubectl delete -f {TEST_PATH}/variable-giveup.yaml",
             shell=True,
             check=True,
             timeout=180,

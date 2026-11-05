@@ -1,3 +1,4 @@
+import logging
 import time
 from contextlib import contextmanager
 
@@ -9,6 +10,8 @@ from config.metrics import (
     RESOURCE_OPERATIONS,
     RESOURCE_RECONCILIATION_DURATION,
 )
+
+_log = logging.getLogger(__name__)
 
 # How many times a delete handler retries before kopf gives up and releases the
 # finalizer (see resources/*.py delete handlers and the giveup handling below).
@@ -54,14 +57,16 @@ def track(
         raise
     except Exception as e:
         _record(resource_type, operation, start, ok=False)
-        _set_status(patch, operation, "Error", f"{operation} failed: {e}")
-        logger.error(f"Failed to {operation} {resource_type}: {e}")
+        _log.debug(f"Failed to {operation} {resource_type}: {e}")
+        detail = _describe(e)
+        _set_status(patch, operation, "Error", f"{operation} failed: {detail}")
+        logger.error(f"Failed to {operation} {resource_type}: {detail}")
         if _is_permanent(e):
             # The spec is rejected and won't succeed on retry; park the resource
             # until it changes (an update re-triggers reconciliation) rather than
             # looping forever.
             raise kopf.PermanentError(
-                f"Failed to {operation} {resource_type} (not retryable): {e}"
+                f"Failed to {operation} {resource_type} (not retryable): {detail}"
             ) from e
         if max_retries is not None and retry is not None and retry + 1 >= max_retries:
             RESOURCE_GIVEUPS.labels(
@@ -74,11 +79,29 @@ def track(
                 f"{resource_type}; the Airflow object may be left orphaned."
             )
         raise kopf.TemporaryError(
-            f"Failed to {operation} {resource_type}: {e}", delay=delay
+            f"Failed to {operation} {resource_type}: {detail}", delay=delay
         ) from e
     else:
         _record(resource_type, operation, start, ok=True)
         _set_status(patch, operation, "Synced", f"{operation} succeeded")
+
+
+def owns(status, create_handler: str, adopt: bool) -> bool:
+    """Whether this resource may modify or delete its Airflow object.
+
+    It may if its create handler succeeded (kopf records the handler's result
+    under ``status.<handler id>``) or if it explicitly adopts the object. A
+    resource whose create hit an existing object it may not adopt must not
+    overwrite it on reconcile or delete it with the resource.
+    """
+    return adopt or bool((status or {}).get(create_handler))
+
+
+def adopt_conflict(kind: str, name: str):
+    return kopf.PermanentError(
+        f"{kind} {name} already exists in Airflow and is not managed by this "
+        f"resource; set spec.adopt: true to take it over"
+    )
 
 
 # HTTP statuses that indicate the request itself is invalid and will keep
@@ -91,6 +114,23 @@ def track(
 # expired/invalid token -- parking on that would wedge resources on a transient
 # token problem the JwtAuthApiClient refresh (or a secret rotation) resolves.
 _PERMANENT_STATUSES = frozenset({400, 422})
+
+
+def _describe(exc: Exception) -> str:
+    """A summary of ``exc`` that is safe to show on the resource.
+
+    Messages land in the CR status and, through the per-object logger, in
+    Kubernetes Events, both readable by anyone who can read the resource. An
+    HTTP error's full text includes response headers (cookies) and the body,
+    which for a 422 echoes the submitted payload, such as a Variable value
+    resolved from a Secret. Keep only the status line; the full error goes to
+    the module logger at debug level.
+    """
+    status = getattr(exc, "status", None)
+    if status is None:
+        return str(exc)
+    reason = getattr(exc, "reason", None)
+    return f"HTTP {status} {reason}" if reason else f"HTTP {status}"
 
 
 def _is_permanent(exc: Exception) -> bool:

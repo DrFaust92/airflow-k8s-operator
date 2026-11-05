@@ -1,0 +1,7 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Variable
+metadata:
+  name: unowned-variable
+  # namespace: default
+spec:
+  value: "must-not-overwrite"
