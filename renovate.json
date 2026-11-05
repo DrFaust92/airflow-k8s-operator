@@ -3,5 +3,9 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
-  ]
+  ],
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": {
+    "enabled": true
+  }
 }
