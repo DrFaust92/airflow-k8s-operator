@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -7,6 +8,7 @@ import kopf
 import pytest
 from airflow_client.client.exceptions import ApiException, NotFoundException
 
+import config.reconcile as reconcile
 import resources.connections as connections
 import resources.dags as dags
 import resources.pools as pools
@@ -148,7 +150,9 @@ def test_create_pool_conflict_without_adopt_is_permanent(monkeypatch):
     monkeypatch.setattr(pools, "pools_api", api)
 
     with pytest.raises(kopf.PermanentError):
-        pools.create_pool(spec=POOL_SPEC, name="p1", logger=logger, patch=_patch())
+        pools.create_pool(
+            spec=POOL_SPEC, name="p1", namespace="ns", logger=logger, patch=_patch()
+        )
     api.patch_pool.assert_not_called()
 
 
@@ -299,6 +303,7 @@ def test_reconcile_pool_recreates_when_missing(monkeypatch):
     pools.reconcile_pool(
         spec=POOL_SPEC,
         name="p1",
+        namespace="ns",
         logger=logger,
         patch=_patch(),
         status=_owned("pool"),
@@ -446,6 +451,16 @@ def _sourced(monkeypatch):
     monkeypatch.setattr(dags, "dags_api", api)
     backend = FakeBackend()
     monkeypatch.setattr(dags, "get_backend", lambda: backend)
+
+    # Airflow reports the DAG as loaded from whichever file was delivered.
+    def get_dag(dag_id, **kwargs):
+        name = next(
+            (f for f in (f"{dag_id}.py", f"{dag_id}.zip") if f in backend.store),
+            f"{dag_id}.py",
+        )
+        return MagicMock(data=json.dumps({"fileloc": f"/dags/{name}"}).encode())
+
+    api.get_dag.side_effect = get_dag
     return api, backend
 
 
@@ -947,3 +962,140 @@ def test_create_connection_rejected_team_name_is_permanent(monkeypatch):
             patch=patch,
         )
     assert patch.status["phase"] == "Error"
+
+
+# --- adoption is limited to namespaces the operator admin allows ----------
+
+
+def _deny_adoption(monkeypatch):
+    monkeypatch.setattr(reconcile, "ADOPT_NAMESPACES", frozenset({"admin-ns"}))
+
+
+def test_adopt_outside_allowed_namespaces_is_denied(monkeypatch):
+    _deny_adoption(monkeypatch)
+    api = MagicMock()
+    monkeypatch.setattr(variables, "variables_api", api)
+    patch = _patch()
+
+    with pytest.raises(kopf.PermanentError):
+        variables.create_variable(
+            spec={**VAR_SPEC, "adopt": True},
+            name="v1",
+            namespace="ns",
+            logger=logger,
+            patch=patch,
+        )
+
+    api.post_variables.assert_not_called()
+    api.patch_variable.assert_not_called()
+    assert "AIRFLOW_ADOPT_NAMESPACES" in patch.status["message"]
+
+
+def test_adopt_flag_does_not_grant_ownership_outside_allowed_namespaces(
+    monkeypatch,
+):
+    _deny_adoption(monkeypatch)
+    api = MagicMock()
+    monkeypatch.setattr(connections, "connections_api", api)
+
+    connections.reconcile_connection(
+        spec={**CONN_SPEC, "adopt": True},
+        name="c1",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
+    )
+    connections.delete_connection(
+        spec={**CONN_SPEC, "adopt": True}, name="c1", namespace="ns", logger=logger
+    )
+
+    api.patch_connection.assert_not_called()
+    api.delete_connection.assert_not_called()
+
+
+def test_created_resource_stays_managed_outside_allowed_namespaces(monkeypatch):
+    # Adoption limits only apply to objects the resource did not create.
+    _deny_adoption(monkeypatch)
+    api = MagicMock()
+    monkeypatch.setattr(pools, "pools_api", api)
+
+    pools.reconcile_pool(
+        spec=POOL_SPEC,
+        name="p1",
+        namespace="ns",
+        logger=logger,
+        patch=_patch(),
+        status=_owned("pool"),
+    )
+    api.patch_pool.assert_called_once()
+
+
+def test_unsourced_dag_outside_allowed_namespaces_is_denied(monkeypatch):
+    _deny_adoption(monkeypatch)
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+        )
+    api.patch_dag.assert_not_called()
+
+
+def test_unsourced_dag_delete_outside_allowed_namespaces_keeps_record(monkeypatch):
+    _deny_adoption(monkeypatch)
+    api = MagicMock()
+    monkeypatch.setattr(dags, "dags_api", api)
+
+    dags.delete_dag(
+        spec={**DAG_SPEC, "deleteDag": True}, name="d1", namespace="ns", logger=logger
+    )
+    api.delete_dag.assert_not_called()
+
+
+def test_sourced_dag_is_allowed_outside_adopt_namespaces(monkeypatch):
+    # A delivered DAG is the resource's own, so no adoption grant is needed.
+    _deny_adoption(monkeypatch)
+    api, backend = _sourced(monkeypatch)
+
+    dags.create_dag(
+        spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=_patch()
+    )
+    api.patch_dag.assert_called_once()
+
+
+def test_sourced_dag_loaded_from_another_file_is_refused(monkeypatch):
+    # A dummy file named after someone else's dag_id must not let the
+    # resource pause that DAG.
+    api, backend = _sourced(monkeypatch)
+    api.get_dag.side_effect = lambda dag_id, **kw: MagicMock(
+        data=json.dumps({"fileloc": "/dags/team_a/pipelines.py"}).encode()
+    )
+    patch = _patch()
+
+    with pytest.raises(kopf.PermanentError):
+        dags.create_dag(
+            spec=SOURCED_DAG_SPEC, name="d1", namespace="ns", logger=logger, patch=patch
+        )
+    api.patch_dag.assert_not_called()
+    assert "pipelines.py" in patch.status["message"]
+
+
+def test_sourced_delete_keeps_record_loaded_from_another_file(monkeypatch):
+    api, backend = _sourced(monkeypatch)
+    spec = {**SOURCED_DAG_SPEC, "deleteDag": True}
+    _create(spec)
+    api.get_dag.side_effect = lambda dag_id, **kw: MagicMock(
+        data=json.dumps({"fileloc": "/dags/team_a/pipelines.py"}).encode()
+    )
+
+    dags.delete_dag(spec=spec, name="d1", namespace="ns", logger=logger)
+
+    # The delivered file goes; the other team's DAG record stays.
+    assert backend.store == {}
+    api.delete_dag.assert_not_called()
+
+
+def test_packaged_dag_fileloc_inside_zip_counts_as_own_file():
+    assert dags._defined_by("/dags/my_dag.zip/my_dag.py", "my_dag.zip")
+    assert not dags._defined_by("/dags/other.zip/my_dag.py", "my_dag.zip")

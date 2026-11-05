@@ -6,3 +6,6 @@ import os
 # values (set via the environment) still take precedence.
 os.environ.setdefault("AIRFLOW_HOST", "http://localhost:8080")
 os.environ.setdefault("AIRFLOW_ACCESS_TOKEN", "unit-test-token")
+# The handler tests run in namespace "ns"; let it adopt by default. Tests of
+# the denied path patch config.reconcile.ADOPT_NAMESPACES.
+os.environ.setdefault("AIRFLOW_ADOPT_NAMESPACES", "ns")

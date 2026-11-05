@@ -11,7 +11,14 @@ from config.base import (
 from config.client import api_client
 from config.k8s_secret import resolve_value
 from config.metrics import MANAGED_RESOURCES
-from config.reconcile import DELETE_MAX_RETRIES, adopt_conflict, owns, track
+from config.reconcile import (
+    DELETE_MAX_RETRIES,
+    adopt_conflict,
+    adoption_allowed,
+    adoption_denied,
+    owns,
+    track,
+)
 from resources.schemas import ConnectionSpec
 
 connections_api = ConnectionApi(api_client=api_client)
@@ -52,6 +59,10 @@ def _build_connection(name, spec, namespace, logger) -> Connection:
 def create_connection(spec, name, namespace, logger, patch, **kwargs):
     logger.info(f"Creating Airflow Connection: {name}")
     with track("connection", "create", logger, patch=patch):
+        if ConnectionSpec.model_validate(spec).adopt and not adoption_allowed(
+            namespace
+        ):
+            raise adoption_denied("Connection", name, namespace)
         connection = _build_connection(name, spec, namespace, logger)
         try:
             connections_api.post_connection(connection, _preload_content=False)
@@ -81,7 +92,12 @@ def create_connection(spec, name, namespace, logger, patch, **kwargs):
 )
 def reconcile_connection(spec, name, namespace, logger, patch, status=None, **kwargs):
     logger.info(f"Reconciling Airflow Connection: {name}")
-    if not owns(status, "create_connection", ConnectionSpec.model_validate(spec).adopt):
+    if not owns(
+        status,
+        "create_connection",
+        ConnectionSpec.model_validate(spec).adopt,
+        namespace,
+    ):
         logger.info(f"Connection {name} is not managed by this resource; skipping")
         return None
     with track("connection", "update", logger, patch=patch):
@@ -103,7 +119,12 @@ def delete_connection(spec, name, namespace, logger, retry=0, status=None, **kwa
     # retries caps how long a failing delete blocks: after DELETE_MAX_RETRIES
     # attempts kopf gives up and releases the finalizer instead of wedging the
     # resource forever. The final attempt emits a Warning event + metric.
-    if not owns(status, "create_connection", ConnectionSpec.model_validate(spec).adopt):
+    if not owns(
+        status,
+        "create_connection",
+        ConnectionSpec.model_validate(spec).adopt,
+        namespace,
+    ):
         logger.info(f"Connection {name} is not managed by this resource; leaving it")
         return {"message": f"Connection {name} left in Airflow (not managed)."}
     logger.info(f"Deleting Airflow Connection: {name}")

@@ -9,7 +9,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
 - **Airflow Pools**: Management of Airflow pools
-- **Adoption is opt-in**: if a Variable, Connection or Pool with the same name already exists in Airflow, the resource goes to `phase=Error` and the existing object is left untouched. Set `spec.adopt: true` to take it over.
+- **Adoption is opt-in and admin-controlled**: if a Variable, Connection or Pool with the same name already exists in Airflow, the resource goes to `phase=Error` and the existing object is left untouched. Setting `spec.adopt: true` takes it over, but only in namespaces the operator allows to adopt — see [Adopting existing objects](#adopting-existing-objects)
 - **Airflow DAGs**: Adoption of existing DAGs and management of their paused state, and optional delivery of DAG files/packages to the Airflow DAGs folder (GCS, S3, or a mounted volume) — see [Uploading DAGs](#uploading-dags). Deleting a `Dag` resource leaves the DAG record in Airflow unless `spec.deleteDag: true` is set, which also deletes its metadata and run history
 
 ## Roadmap (TBD)
@@ -334,6 +334,29 @@ Required IAM policy example (attach to the IRSA role):
     ]
 }
 ```
+
+## Adopting existing objects
+
+A resource always manages the Airflow object it created. Taking over an object
+that already exists in Airflow is *adoption*: `spec.adopt: true` on a
+`Variable`, `Connection` or `Pool`, and every `Dag` without `spec.source`
+(DAGs can't be created through the API, so such a `Dag` always adopts one).
+
+Adoption is only allowed from the namespaces in `operator.adoptNamespaces`
+(env `AIRFLOW_ADOPT_NAMESPACES`). The default is the operator's release
+namespace only; `["*"]` allows every namespace. Elsewhere, an adopting resource
+goes to `phase=Error` and never modifies or deletes the Airflow object.
+
+This matters with `scope: cluster`, where every namespace shares one Airflow:
+without it, anyone who can create a resource in any namespace could take over,
+pause or delete another team's object by reusing its name. With
+`scope: namespaced`, each operator only sees its own namespace, which the
+default already allows.
+
+A `Dag` with `spec.source` doesn't need the grant, since the DAG comes from a
+file the operator delivered. The operator still checks that Airflow loaded the
+DAG from that file before pausing or deleting it, so a resource can't point
+`spec.dagId` at another team's DAG.
 
 ## Uploading DAGs
 

@@ -58,6 +58,7 @@ jobs:
           echo "AIRFLOW_HOST=http://localhost:8080" >> $GITHUB_ENV
           echo "AIRFLOW_USERNAME=admin" >> $GITHUB_ENV
           echo "AIRFLOW_PASSWORD=admin" >> $GITHUB_ENV
+          echo "AIRFLOW_ADOPT_NAMESPACES=default" >> $GITHUB_ENV
 
       - name: Port forward Airflow webserver
         run: |
@@ -119,6 +120,7 @@ jobs:
         run: |
           echo "AIRFLOW_HOST=http://localhost:8080" >> $GITHUB_ENV
           echo "AIRFLOW_API_BASE_URL=/api/v2" >> $GITHUB_ENV
+          echo "AIRFLOW_ADOPT_NAMESPACES=default" >> $GITHUB_ENV
 
       - name: Obtain Airflow JWT token
         run: |
@@ -173,4 +175,5 @@ jobs:
         env:
           AIRFLOW_HOST: http://127.0.0.1:9
           AIRFLOW_ACCESS_TOKEN: unreachable
+          AIRFLOW_ADOPT_NAMESPACES: default
         run: uv run pytest tests/giveup_test.py -v

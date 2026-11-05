@@ -175,6 +175,11 @@ operator:
   # from (e.g. gs://staging-bucket/dags/). objectRef reads with the operator's
   # credentials, so it is denied when this is empty.
   dagsSourcePrefixes: []
+  # -- (list) namespaces whose resources may adopt objects that already exist
+  # in Airflow (spec.adopt on Variables/Connections/Pools, and Dag resources
+  # without spec.source). Empty means only the release namespace; ["*"] allows
+  # every namespace. Resources can always manage objects they created.
+  adoptNamespaces: []
 
   basicAuthSecret:
     # -- (bool) whether to use basic auth secrets

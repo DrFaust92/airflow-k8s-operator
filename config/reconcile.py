@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from contextlib import contextmanager
 
@@ -86,15 +87,38 @@ def track(
         _set_status(patch, operation, "Synced", f"{operation} succeeded")
 
 
-def owns(status, create_handler: str, adopt: bool) -> bool:
+# Namespaces whose resources may adopt objects that already exist in Airflow
+# (comma-separated; "*" allows all). Unset allows none. Adoption is how one
+# resource takes over an object it did not create, so in a cluster where many
+# namespaces share one Airflow only the operator admin may grant it; a
+# per-resource flag alone can be set by anyone who can create the resource.
+ADOPT_NAMESPACES = frozenset(
+    n.strip() for n in os.getenv("AIRFLOW_ADOPT_NAMESPACES", "").split(",") if n.strip()
+)
+
+
+def adoption_allowed(namespace) -> bool:
+    return "*" in ADOPT_NAMESPACES or namespace in ADOPT_NAMESPACES
+
+
+def adoption_denied(kind: str, name: str, namespace):
+    return kopf.PermanentError(
+        f"{kind} {name}: adopting existing Airflow objects is not allowed in "
+        f"namespace {namespace} (operator setting AIRFLOW_ADOPT_NAMESPACES)"
+    )
+
+
+def owns(status, create_handler: str, adopt: bool, namespace) -> bool:
     """Whether this resource may modify or delete its Airflow object.
 
     It may if its create handler succeeded (kopf records the handler's result
-    under ``status.<handler id>``) or if it explicitly adopts the object. A
-    resource whose create hit an existing object it may not adopt must not
-    overwrite it on reconcile or delete it with the resource.
+    under ``status.<handler id>``) or if it adopts the object from a namespace
+    allowed to adopt. A resource whose create hit an existing object it may not
+    adopt must not overwrite it on reconcile or delete it with the resource.
     """
-    return adopt or bool((status or {}).get(create_handler))
+    if adopt and adoption_allowed(namespace):
+        return True
+    return bool((status or {}).get(create_handler))
 
 
 def adopt_conflict(kind: str, name: str):
