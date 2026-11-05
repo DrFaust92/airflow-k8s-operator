@@ -1,0 +1,9 @@
+# Baseline of findings in the rendered chart, so the scan only fails on new ones.
+# Remove an entry once the chart is fixed.
+
+# The operator reads Secrets referenced by secretRef, so it needs Secret access.
+KSV-0041
+
+# values.yaml ships an empty securityContext; pending secure chart defaults.
+KSV-0014
+KSV-0118

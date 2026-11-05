@@ -7,24 +7,21 @@ on:
     paths:
       - 'chart/**'
 
+permissions: {}
+
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # to push chart release and create a release (helm/chart-releaser-action)
-      packages: write # needed for ghcr access
-      id-token: write # needed for keyless signing
+      contents: read
+      packages: write # to push charts to GHCR
 
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
-
-        env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          CR_SKIP_EXISTING: true
-          CR_GENERATE_RELEASE_NOTES: true
 
       # see https://github.com/helm/chart-releaser/issues/183
       - name: Login to GitHub Container Registry

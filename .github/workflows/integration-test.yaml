@@ -2,24 +2,30 @@ name: integration-test
 
 on: pull_request
 
+permissions:
+  contents: read
+
 jobs:
   testV1:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       
       - name: Set up Python
-        uses: actions/setup-python@v6 # uses .python-version file by default
+        # uses .python-version file by default
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
       
       - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
 
       - name: Add Airflow Helm repository
         run: helm repo add apache-airflow https://airflow.apache.org && helm repo update
@@ -57,7 +63,7 @@ jobs:
           sleep 5
 
       - name: install test dependencies
-        run: uv sync --group test
+        run: uv sync --locked --group test
 
       - name: Run operator test
         run: uv run pytest tests/operator_test.py
@@ -66,19 +72,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       
       - name: Set up Python
-        uses: actions/setup-python@v6 # uses .python-version file by default
+        # uses .python-version file by default
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked
       
       - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
 
       - name: Add Airflow Helm repository
         run: helm repo add apache-airflow https://airflow.apache.org && helm repo update
@@ -128,7 +137,7 @@ jobs:
           echo "AIRFLOW_ACCESS_TOKEN=$token" >> $GITHUB_ENV
 
       - name: install test dependencies
-        run: uv sync --group test
+        run: uv sync --locked --group test
 
       - name: Run operator test
         run: uv run pytest tests/operator_test.py
@@ -139,19 +148,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6 # uses .python-version file by default
+        # uses .python-version file by default
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Install dependencies
-        run: uv sync --group test
+        run: uv sync --locked --group test
 
       - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
 
       - name: Run give-up integration test
         env:
