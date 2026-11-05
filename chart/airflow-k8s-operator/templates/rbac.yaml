@@ -42,9 +42,10 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [list, watch, get, create, patch]
+  # Secrets are only read by name (secretRef), never listed or watched.
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [get, list, watch]
+    verbs: [get]
   - apiGroups: [airflow.drfaust92]
     resources: [variables, variables/status, connections, connections/status, pools, pools/status, dags, dags/status]
     verbs: [list, watch, get, patch]
@@ -82,9 +83,10 @@ rules:
   - apiGroups: [""]
     resources: [events]
     verbs: [list, watch, get, create, patch]
+  # Secrets are only read by name (secretRef), never listed or watched.
   - apiGroups: [""]
     resources: [secrets]
-    verbs: [get, list, watch]
+    verbs: [get]
   - apiGroups: [airflow.drfaust92]
     resources: [variables, variables/status, connections, connections/status, pools, pools/status, dags, dags/status]
     verbs: [list, watch, get, patch]
