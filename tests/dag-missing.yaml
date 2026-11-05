@@ -1,0 +1,8 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: Dag
+metadata:
+  name: missing-dag
+  # namespace: default
+spec:
+  dagId: does_not_exist_in_airflow
+  isPaused: true

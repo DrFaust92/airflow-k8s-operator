@@ -5,6 +5,7 @@ import kopf
 import prometheus_client as prometheus
 
 import resources.connections  # noqa: F401
+import resources.dags  # noqa: F401
 import resources.pools  # noqa: F401
 import resources.variables  # noqa: F401
 
