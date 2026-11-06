@@ -29,11 +29,22 @@ jobs:
 
       - name: Add Airflow Helm repository
         run: helm repo add apache-airflow https://airflow.apache.org && helm repo update
+
+      - name: Download Airflow chart
+        # archive.apache.org often resets or times out; retry the download so
+        # a flaky mirror doesn't fail the run before any test starts.
+        run: |
+          for i in 1 2 3 4 5; do
+            helm pull apache-airflow/airflow --version 1.16.0 && exit 0
+            echo "Download attempt $i failed; retrying in $((i * 10))s"
+            sleep $((i * 10))
+          done
+          exit 1
       
       - name: Install Airflow
         run: |
           # Airflow v2 (v1 API)
-          helm upgrade --install airflow apache-airflow/airflow --version 1.16.0 \
+          helm upgrade --install airflow ./airflow-1.16.0.tgz \
             --set postgresql.image.repository=bitnamilegacy/postgresql \
             --set postgresql.image.tag=16.1.0-debian-11-r15 \
             --set executor=KubernetesExecutor \
@@ -94,11 +105,22 @@ jobs:
 
       - name: Add Airflow Helm repository
         run: helm repo add apache-airflow https://airflow.apache.org && helm repo update
+
+      - name: Download Airflow chart
+        # archive.apache.org often resets or times out; retry the download so
+        # a flaky mirror doesn't fail the run before any test starts.
+        run: |
+          for i in 1 2 3 4 5; do
+            helm pull apache-airflow/airflow --version 1.22.0 && exit 0
+            echo "Download attempt $i failed; retrying in $((i * 10))s"
+            sleep $((i * 10))
+          done
+          exit 1
       
       - name: Install Airflow
         run: |
           # Airflow v3 (v2 API)
-          helm upgrade --install airflow apache-airflow/airflow --version 1.22.0 \
+          helm upgrade --install airflow ./airflow-1.22.0.tgz \
             --set postgresql.image.repository=bitnamilegacy/postgresql \
             --set postgresql.image.tag=16.1.0-debian-11-r15 \
             --set executor=KubernetesExecutor \
