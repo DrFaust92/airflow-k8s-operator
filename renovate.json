@@ -7,5 +7,14 @@
   "osvVulnerabilityAlerts": true,
   "lockFileMaintenance": {
     "enabled": true
-  }
+  },
+  "packageRules": [
+    {
+      "description": "Hold Python below 3.15 until runtime dependencies (e.g. pyyaml) ship 3.15 wheels; move .python-version and the Dockerfile uv/python base image together",
+      "matchDepNames": [
+        "python"
+      ],
+      "allowedVersions": "<3.15"
+    }
+  ]
 }
