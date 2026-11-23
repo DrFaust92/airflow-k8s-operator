@@ -9,6 +9,7 @@ This Kubernetes operator provides a way to manage Airflow resources within a Kub
 - **Airflow Variables**: Management of Airflow variables
 - **Airflow Connections**: Management of Airflow connections
 - **Airflow Pools**: Management of Airflow pools
+- **Airflow Roles and Users**: Management of Airflow roles (`AirflowRole`) and users (`AirflowUser`, password from a Kubernetes Secret) through the auth manager API — see [Roles and users](#roles-and-users)
 - **Adoption is opt-in and admin-controlled**: if a Variable, Connection or Pool with the same name already exists in Airflow, the resource goes to `phase=Error` and the existing object is left untouched. Setting `spec.adopt: true` takes it over, but only in namespaces the operator allows to adopt — see [Adopting existing objects](#adopting-existing-objects)
 - **Airflow DAGs**: Adoption of existing DAGs and management of their paused state, and optional delivery of DAG files/packages to the Airflow DAGs folder (GCS, S3, or a mounted volume) — see [Uploading DAGs](#uploading-dags). Deleting a `Dag` resource leaves the DAG record in Airflow unless `spec.deleteDag: true` is set, which also deletes its metadata and run history
 
@@ -138,6 +139,10 @@ AIRFLOW_API_BASE_URL=/api/v2
 ```
 
 If `AIRFLOW_API_BASE_URL` is not provided the operator will append `/api/v1` by default.
+
+**AIRFLOW_AUTH_MANAGER_BASE_URL**: Optional base path of the API that serves roles and users. Defaults to `/auth/fab/v1` (the FAB auth manager) when `AIRFLOW_API_BASE_URL` is `/api/v2`, and to `AIRFLOW_API_BASE_URL` otherwise. Only needed for `AirflowRole`/`AirflowUser` with a non-default auth manager path.
+
+**AIRFLOW_AUTH_MANAGER_BASIC_AUTH**: Set to `true` on Airflow 3 with a FAB provider older than 3.2, whose users/roles API only accepts basic auth. See [Roles and users](#roles-and-users).
 
 ## Testing Locally
 
@@ -357,6 +362,73 @@ A `Dag` with `spec.source` doesn't need the grant, since the DAG comes from a
 file the operator delivered. The operator still checks that Airflow loaded the
 DAG from that file before pausing or deleting it, so a resource can't point
 `spec.dagId` at another team's DAG.
+
+## Roles and users
+
+`AirflowRole` and `AirflowUser` manage Airflow roles and users. Their names
+default to the resource name; set `spec.name` (roles) or `spec.username`
+(users) for names that aren't valid Kubernetes names. The usual `spec.adopt`
+rules apply, so taking over a built-in role such as `Viewer` needs an
+adopting namespace.
+
+```yaml
+apiVersion: airflow.drfaust92/v1beta1
+kind: AirflowRole
+metadata:
+  name: data-engineers
+spec:
+  name: Data Engineers
+  actions:
+    - action: can_read
+      resource: DAGs
+    - action: can_edit
+      resource: DAGs
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jane-password
+stringData:
+  password: change-me
+---
+apiVersion: airflow.drfaust92/v1beta1
+kind: AirflowUser
+metadata:
+  name: jane
+spec:
+  email: jane@example.com
+  firstName: Jane
+  lastName: Doe
+  roles: [Data Engineers]
+  passwordSecretRef:
+    name: jane-password
+    key: password
+```
+
+The password is read from the Secret and sent when the user is created and
+whenever the Secret changes. The operator records only the Secret's
+`resourceVersion` in the resource status, never the password.
+
+Where roles and users live depends on the Airflow version:
+
+- **Airflow 2** serves them from the core API (`/api/v1`) with the operator's
+  usual credentials.
+- **Airflow 3** serves them from the auth manager; for the FAB auth manager
+  that is `/auth/fab/v1` (override with `AIRFLOW_AUTH_MANAGER_BASE_URL`). With
+  FAB provider 3.2 or later, that API accepts the same Airflow 3 JWT / access
+  token as the core API, so the operator uses its usual credentials there.
+  Older FAB providers only accept the FAB API auth backends; for those, set
+  `AIRFLOW_AUTH_MANAGER_BASIC_AUTH=true` so the operator uses HTTP basic auth
+  with `AIRFLOW_USERNAME`/`AIRFLOW_PASSWORD`, and enable the FAB basic auth
+  backend in Airflow:
+
+  ```ini
+  [fab]
+  auth_backends = airflow.providers.fab.auth_manager.api.auth.backend.basic_auth
+  ```
+- **Cloud Composer and MWAA**: the operator reuses the platform credentials
+  against the auth manager path. Whether the FAB API accepts them depends on
+  the platform's configuration.
 
 ## Uploading DAGs
 

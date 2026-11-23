@@ -34,3 +34,11 @@ if AIRFLOW_HOST.endswith(AIRFLOW_API_BASE_URL):
     AIRFLOW_HOST_ROOT = AIRFLOW_HOST[: -len(AIRFLOW_API_BASE_URL)].rstrip("/")
 else:
     AIRFLOW_HOST_ROOT = AIRFLOW_HOST.rstrip("/")
+
+# Base path of the auth manager API that serves roles and users. Airflow 2
+# serves them from the core API (/api/v1); Airflow 3 moved them to the auth
+# manager, which for the FAB auth manager is /auth/fab/v1.
+AIRFLOW_AUTH_MANAGER_BASE_URL = os.getenv(
+    "AIRFLOW_AUTH_MANAGER_BASE_URL",
+    "/auth/fab/v1" if IS_API_V2 else AIRFLOW_API_BASE_URL,
+)

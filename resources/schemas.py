@@ -267,5 +267,84 @@ class DagSpec(BaseModel):
     )
 
 
+_AUTH_MANAGER_DESC = (
+    "Managed through the auth manager API: the core API on Airflow 2, the FAB "
+    "auth manager API (/auth/fab/v1) on Airflow 3."
+)
+
+
+class RoleAction(BaseModel):
+    """A permission: an action on a resource, e.g. can_read on DAGs."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    action: str = Field(description="The action name, e.g. can_read or can_edit.")
+    resource: str = Field(description="The resource name, e.g. DAGs or Connections.")
+
+
+class AirflowRoleSpec(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    crd: ClassVar[dict] = {
+        "kind": "AirflowRole",
+        "plural": "airflowroles",
+        "singular": "airflowrole",
+        "short_names": ["afroles", "afrole"],
+    }
+
+    name: str | None = Field(
+        default=None,
+        description=(
+            "The role name in Airflow. Defaults to the resource name; set it "
+            "for names that are not valid Kubernetes names, e.g. "
+            "'Data Engineers'. " + _AUTH_MANAGER_DESC
+        ),
+    )
+    actions: list[RoleAction] = Field(
+        default_factory=list,
+        description="The permissions granted by the role.",
+    )
+    adopt: bool = Field(default=False, description=_ADOPT_DESC)
+
+
+class AirflowUserSpec(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    crd: ClassVar[dict] = {
+        "kind": "AirflowUser",
+        "plural": "airflowusers",
+        "singular": "airflowuser",
+        "short_names": ["afusers", "afuser"],
+    }
+
+    username: str | None = Field(
+        default=None,
+        description=(
+            "The username in Airflow. Defaults to the resource name. "
+            + _AUTH_MANAGER_DESC
+        ),
+    )
+    email: str = Field(description="The user's email address.")
+    first_name: str = Field(alias="firstName", description="The user's first name.")
+    last_name: str = Field(alias="lastName", description="The user's last name.")
+    roles: list[str] = Field(
+        default_factory=list,
+        description="Names of the Airflow roles assigned to the user.",
+    )
+    password_secret_ref: SecretRef = Field(
+        alias="passwordSecretRef",
+        description=(
+            "Kubernetes Secret key holding the user's password. The password is "
+            "sent on create and whenever the Secret changes."
+        ),
+    )
+    adopt: bool = Field(default=False, description=_ADOPT_DESC)
+
+
 # Order here drives the order the CRD files are generated in.
-SPECS = [ConnectionSpec, PoolSpec, VariableSpec, DagSpec]
+SPECS = [
+    ConnectionSpec,
+    PoolSpec,
+    VariableSpec,
+    DagSpec,
+    AirflowRoleSpec,
+    AirflowUserSpec,
+]

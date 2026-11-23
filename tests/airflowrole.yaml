@@ -1,0 +1,10 @@
+apiVersion: airflow.drfaust92/v1beta1
+kind: AirflowRole
+metadata:
+  name: example-role
+  # namespace: default
+spec:
+  name: Example Role
+  actions:
+    - action: can_read
+      resource: DAGs

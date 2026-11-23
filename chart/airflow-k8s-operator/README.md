@@ -1,6 +1,6 @@
 # airflow-k8s-operator
 
-![Version: 0.23.0](https://img.shields.io/badge/Version-0.23.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.10.0](https://img.shields.io/badge/AppVersion-0.10.0-informational?style=flat-square)
+![Version: 0.24.0](https://img.shields.io/badge/Version-0.24.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.10.0](https://img.shields.io/badge/AppVersion-0.10.0-informational?style=flat-square)
 
 A Helm chart for Kubernetes Airflow Operator
 
@@ -35,7 +35,7 @@ A Helm chart for Kubernetes Airflow Operator
 | metricsPort | int | `9000` | metrics port for Prometheus scraping |
 | nameOverride | string | `""` | short chart name override |
 | nodeSelector | object | `{}` |  |
-| operator.adoptNamespaces | list | `[]` | namespaces whose resources may adopt objects that already exist in Airflow (spec.adopt on Variables/Connections/Pools, and Dag resources without spec.source). Empty means only the release namespace; ["*"] allows every namespace. Resources can always manage objects they created. |
+| operator.adoptNamespaces | list | `[]` | namespaces whose resources may adopt objects that already exist in Airflow (spec.adopt on Variables/Connections/Pools/AirflowRoles/AirflowUsers, and Dag resources without spec.source). Empty means only the release namespace; ["*"] allows every namespace. Resources can always manage objects they created. |
 | operator.airflowHost | string | `""` | address for the operator |
 | operator.basicAuthSecret.create | bool | `false` | whether to create the basic auth secret If set to false, you must provide a Kubernetes secret with the name specified in `secretName`. The secret must contain the keys specified in `usernameKey` and `passwordKey`. If the secret or keys do not exist, the deployment will fail. |
 | operator.basicAuthSecret.enabled | bool | `false` | whether to use basic auth secrets |
