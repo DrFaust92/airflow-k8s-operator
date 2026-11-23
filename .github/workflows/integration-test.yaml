@@ -133,6 +133,7 @@ jobs:
             --set migrateDatabaseJob.applyCustomEnv=false \
             --set webserver.resources.requests.memory=1Gi \
             --set webserver.resources.limits.memory=1Gi \
+            --set config.fab.auth_backends=airflow.providers.fab.auth_manager.api.auth.backend.basic_auth \
             --set-string 'env[0].name=AIRFLOW__CORE__LOAD_EXAMPLES' \
             --set-string 'env[0].value=True' \
             --timeout 10m \
@@ -142,6 +143,10 @@ jobs:
         run: |
           echo "AIRFLOW_HOST=http://localhost:8080" >> $GITHUB_ENV
           echo "AIRFLOW_API_BASE_URL=/api/v2" >> $GITHUB_ENV
+          # Roles/users go through the FAB auth manager API, which uses basic
+          # auth on Airflow 3 (it does not accept the /auth/token JWT).
+          echo "AIRFLOW_USERNAME=admin" >> $GITHUB_ENV
+          echo "AIRFLOW_PASSWORD=admin" >> $GITHUB_ENV
           echo "AIRFLOW_ADOPT_NAMESPACES=default" >> $GITHUB_ENV
 
       - name: Obtain Airflow JWT token

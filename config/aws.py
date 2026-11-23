@@ -86,8 +86,17 @@ class AWSAuthApiClient(client.ApiClient):
     # Grace period (in seconds) before token expiration to refresh proactively
     TOKEN_REFRESH_GRACE = 60
 
-    def __init__(self, configuration, region, env_name, login_path, credentials):
+    def __init__(
+        self,
+        configuration,
+        region,
+        env_name,
+        login_path,
+        credentials,
+        api_base_url=AIRFLOW_API_BASE_URL,
+    ):
         super().__init__(configuration)
+        self._api_base_url = api_base_url
         self._region = region
         self._env_name = env_name
         self._login_path = login_path
@@ -146,7 +155,7 @@ class AWSAuthApiClient(client.ApiClient):
         header_params["Content-Type"] = "application/json"
 
         # Ensure the call targets the correct host + API base path
-        host = f"{self._credentials[0].rstrip('/')}{AIRFLOW_API_BASE_URL}"
+        host = f"{self._credentials[0].rstrip('/')}{self._api_base_url}"
 
         return super().call_api(
             resource_path,

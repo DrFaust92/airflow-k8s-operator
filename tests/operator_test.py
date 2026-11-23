@@ -10,6 +10,7 @@ from airflow_client.client.exceptions import NotFoundException
 from airflow_client.client.model.variable import Variable
 from kopf.testing import KopfRunner
 
+from config.auth_manager import AuthManagerApi
 from config.client import api_client
 
 TEST_PATH = "tests"
@@ -23,6 +24,7 @@ variable_api = VariableApi(api_client)
 connection_api = ConnectionApi(api_client)
 pool_api = PoolApi(api_client)
 dag_api = DAGApi(api_client)
+auth_manager_api = AuthManagerApi()
 
 
 def _phase(kind, name):
@@ -88,6 +90,22 @@ def _wait_for_present(get_callable, *args, timeout=60):
     raise AssertionError(f"{args} not present in Airflow within {timeout}s")
 
 
+def _auth_manager_get(get_callable, name):
+    try:
+        return get_callable(name)
+    except NotFoundException:
+        return None
+
+
+def _wait_for_auth_manager_absent(get_callable, name, timeout=45):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _auth_manager_get(get_callable, name) is None:
+            return
+        time.sleep(2)
+    raise AssertionError(f"{name} still present in Airflow after {timeout}s")
+
+
 def test_operator():
     with KopfRunner(["run", "-A", "--verbose", "main.py"]):
         # create CRDs
@@ -101,7 +119,9 @@ def test_operator():
             "crd/connections.airflow.drfaust92 "
             "crd/pools.airflow.drfaust92 "
             "crd/variables.airflow.drfaust92 "
-            "crd/dags.airflow.drfaust92",
+            "crd/dags.airflow.drfaust92 "
+            "crd/airflowroles.airflow.drfaust92 "
+            "crd/airflowusers.airflow.drfaust92",
             shell=True,
             check=True,
         )
@@ -302,6 +322,36 @@ def test_operator():
             check=True,
             timeout=120,
         )
+
+        # Role + User (auth manager API: /api/v1 on Airflow 2, /auth/fab/v1 on
+        # Airflow 3): create -> Synced + present with the role assigned;
+        # delete -> gone from Airflow.
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/airflowrole.yaml", shell=True, check=True
+        )
+        _wait_for_synced("airflowrole", "example-role")
+        role = _auth_manager_get(auth_manager_api.get_role, "Example Role")
+        assert role is not None and {
+            (a["action"]["name"], a["resource"]["name"]) for a in role["actions"]
+        } >= {("can_read", "DAGs")}, role
+
+        subprocess.run(
+            f"kubectl apply -f {TEST_PATH}/airflowuser.yaml", shell=True, check=True
+        )
+        _wait_for_synced("airflowuser", "example-user")
+        user = _auth_manager_get(auth_manager_api.get_user, "example-user")
+        assert user is not None and [r["name"] for r in user["roles"]] == [
+            "Example Role"
+        ], user
+
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/airflowuser.yaml", shell=True, check=True
+        )
+        _wait_for_auth_manager_absent(auth_manager_api.get_user, "example-user")
+        subprocess.run(
+            f"kubectl delete -f {TEST_PATH}/airflowrole.yaml", shell=True, check=True
+        )
+        _wait_for_auth_manager_absent(auth_manager_api.get_role, "Example Role")
 
         # delete CRDs
         subprocess.run(f"{CRD_RENDER} | kubectl delete -f -", shell=True, check=True)

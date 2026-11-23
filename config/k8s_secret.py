@@ -106,3 +106,32 @@ def resolve_value(value_spec: dict | Mapping, namespace: str, logger=None) -> st
         effective_logger.error("secretRef not found in value_spec")
 
     raise ValueError(f"Invalid value specification: {value_spec}")
+
+
+def get_secret_value_with_version(
+    secret_name: str, secret_key: str, namespace: str
+) -> tuple[str, str]:
+    """Fetch a Secret value together with the Secret's resourceVersion.
+
+    The version lets a handler tell whether the Secret changed since the value
+    was last sent, without storing the value (or a hash of it) anywhere.
+
+    Raises:
+        ValueError: If the Secret or key is not found.
+    """
+    import base64
+
+    try:
+        secret = client.CoreV1Api().read_namespaced_secret(secret_name, namespace)
+    except client.exceptions.ApiException as e:
+        raise ValueError(
+            f"Failed to fetch Secret '{secret_name}' from namespace "
+            f"'{namespace}': HTTP {e.status}"
+        ) from e
+    if not secret.data or secret_key not in secret.data:
+        raise ValueError(
+            f"Key '{secret_key}' not found in Secret '{secret_name}' in "
+            f"namespace '{namespace}'"
+        )
+    value = base64.b64decode(secret.data[secret_key]).decode("utf-8")
+    return value, secret.metadata.resource_version

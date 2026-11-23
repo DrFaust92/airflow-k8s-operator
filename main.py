@@ -7,6 +7,8 @@ import prometheus_client as prometheus
 import resources.connections  # noqa: F401
 import resources.dags  # noqa: F401
 import resources.pools  # noqa: F401
+import resources.roles  # noqa: F401
+import resources.users  # noqa: F401
 import resources.variables  # noqa: F401
 
 # Serving metrics is best-effort: if the port is unavailable, keep the operator
