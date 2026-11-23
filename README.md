@@ -142,6 +142,8 @@ If `AIRFLOW_API_BASE_URL` is not provided the operator will append `/api/v1` by 
 
 **AIRFLOW_AUTH_MANAGER_BASE_URL**: Optional base path of the API that serves roles and users. Defaults to `/auth/fab/v1` (the FAB auth manager) when `AIRFLOW_API_BASE_URL` is `/api/v2`, and to `AIRFLOW_API_BASE_URL` otherwise. Only needed for `AirflowRole`/`AirflowUser` with a non-default auth manager path.
 
+**AIRFLOW_AUTH_MANAGER_BASIC_AUTH**: Set to `true` on Airflow 3 with a FAB provider older than 3.2, whose users/roles API only accepts basic auth. See [Roles and users](#roles-and-users).
+
 ## Testing Locally
 
 The recommended approach for local testing is to set up a local Kubernetes cluster using [kind](https://kind.sigs.k8s.io/) and deploy Airflow within it.
@@ -412,18 +414,18 @@ Where roles and users live depends on the Airflow version:
 - **Airflow 2** serves them from the core API (`/api/v1`) with the operator's
   usual credentials.
 - **Airflow 3** serves them from the auth manager; for the FAB auth manager
-  that is `/auth/fab/v1` (override with `AIRFLOW_AUTH_MANAGER_BASE_URL`). The
-  FAB API doesn't accept the JWT from `/auth/token`, so the operator calls it
-  with HTTP basic auth using `AIRFLOW_USERNAME`/`AIRFLOW_PASSWORD`, and Airflow
-  must enable the FAB basic auth backend:
+  that is `/auth/fab/v1` (override with `AIRFLOW_AUTH_MANAGER_BASE_URL`). With
+  FAB provider 3.2 or later, that API accepts the same Airflow 3 JWT / access
+  token as the core API, so the operator uses its usual credentials there.
+  Older FAB providers only accept the FAB API auth backends; for those, set
+  `AIRFLOW_AUTH_MANAGER_BASIC_AUTH=true` so the operator uses HTTP basic auth
+  with `AIRFLOW_USERNAME`/`AIRFLOW_PASSWORD`, and enable the FAB basic auth
+  backend in Airflow:
 
   ```ini
   [fab]
   auth_backends = airflow.providers.fab.auth_manager.api.auth.backend.basic_auth
   ```
-
-  With only `AIRFLOW_ACCESS_TOKEN` set, role and user resources go to
-  `phase=Error` explaining which credentials are missing.
 - **Cloud Composer and MWAA**: the operator reuses the platform credentials
   against the auth manager path. Whether the FAB API accepts them depends on
   the platform's configuration.

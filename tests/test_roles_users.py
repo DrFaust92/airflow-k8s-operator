@@ -228,26 +228,57 @@ def test_auth_manager_reuses_core_client_on_airflow_2(monkeypatch, fresh_client_
     assert auth_manager.get_auth_manager_api_client() is auth_manager.api_client
 
 
-def test_auth_manager_uses_basic_auth_on_airflow_3(monkeypatch, fresh_client_cache):
+def _airflow_3(monkeypatch, username=None, password=None, token=None, basic=None):
     monkeypatch.setattr(auth_manager, "AIRFLOW_AUTH_MANAGER_BASE_URL", "/auth/fab/v1")
     monkeypatch.setattr(auth_manager, "AIRFLOW_API_BASE_URL", "/api/v2")
+    monkeypatch.setattr(auth_manager, "IS_API_V2", True)
     monkeypatch.setattr(auth_manager, "AIRFLOW_HOST_ROOT", "http://airflow:8080")
-    monkeypatch.setattr(auth_manager, "AIRFLOW_USERNAME", "admin")
-    monkeypatch.setattr(auth_manager, "AIRFLOW_PASSWORD", "pw")
+    monkeypatch.setattr(auth_manager, "USE_GOOGLE_AUTH", None)
+    monkeypatch.setattr(auth_manager, "USE_AWS_AUTH", None)
+    monkeypatch.setattr(auth_manager, "AIRFLOW_USERNAME", username)
+    monkeypatch.setattr(auth_manager, "AIRFLOW_PASSWORD", password)
+    monkeypatch.setattr(auth_manager, "AIRFLOW_ACCESS_TOKEN", token)
+    monkeypatch.setattr(auth_manager, "AIRFLOW_AUTH_MANAGER_BASIC_AUTH", basic)
+
+
+def test_auth_manager_uses_jwt_on_airflow_3(monkeypatch, fresh_client_cache):
+    # FAB provider 3.2+ serves users/roles from FastAPI behind the Airflow 3
+    # JWT, so username/password go through /auth/token like the core API.
+    _airflow_3(monkeypatch, username="admin", password="pw")
+    c = auth_manager.get_auth_manager_api_client()
+    assert isinstance(c, auth_manager.JwtAuthApiClient)
+    assert c.configuration.host == "http://airflow:8080/auth/fab/v1"
+    assert c._token_url == "http://airflow:8080/auth/token"
+    assert "Basic" not in c.configuration.auth_settings()
+
+
+def test_auth_manager_uses_access_token_on_airflow_3(monkeypatch, fresh_client_cache):
+    _airflow_3(monkeypatch, token="tok")
     c = auth_manager.get_auth_manager_api_client()
     assert c is not auth_manager.api_client
     assert c.configuration.host == "http://airflow:8080/auth/fab/v1"
+    assert c.default_headers["Authorization"] == "Bearer tok"
+
+
+def test_auth_manager_basic_auth_opt_in_for_legacy_fab(monkeypatch, fresh_client_cache):
+    _airflow_3(monkeypatch, username="admin", password="pw", token="tok", basic="true")
+    c = auth_manager.get_auth_manager_api_client()
+    assert not isinstance(c, auth_manager.JwtAuthApiClient)
     assert c.configuration.auth_settings()["Basic"]["value"].startswith("Basic ")
+    assert "Authorization" not in c.default_headers
 
 
-def test_auth_manager_without_credentials_on_airflow_3_is_permanent(
+def test_auth_manager_basic_auth_opt_in_without_credentials_is_permanent(
     monkeypatch, fresh_client_cache
 ):
-    monkeypatch.setattr(auth_manager, "AIRFLOW_AUTH_MANAGER_BASE_URL", "/auth/fab/v1")
-    monkeypatch.setattr(auth_manager, "AIRFLOW_API_BASE_URL", "/api/v2")
-    monkeypatch.setattr(auth_manager, "AIRFLOW_USERNAME", None)
-    monkeypatch.setattr(auth_manager, "AIRFLOW_PASSWORD", None)
+    _airflow_3(monkeypatch, token="tok", basic="true")
     with pytest.raises(kopf.PermanentError, match="AIRFLOW_USERNAME"):
+        auth_manager.get_auth_manager_api_client()
+
+
+def test_auth_manager_without_credentials_is_permanent(monkeypatch, fresh_client_cache):
+    _airflow_3(monkeypatch)
+    with pytest.raises(kopf.PermanentError):
         auth_manager.get_auth_manager_api_client()
 
 

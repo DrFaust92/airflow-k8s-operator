@@ -2,20 +2,23 @@
 
 Airflow 2 serves roles and users from the core REST API (/api/v1), so the
 operator's regular client is reused. Airflow 3 moved them to the auth manager;
-with the FAB auth manager they live under /auth/fab/v1. That API does not
-accept the Airflow 3 JWT issued by /auth/token -- it authenticates with the
-FAB API auth backends (basic_auth, kerberos_auth, session) -- so on Airflow 3
-the operator talks to it with HTTP basic auth using AIRFLOW_USERNAME and
-AIRFLOW_PASSWORD. The FAB ``[fab] auth_backends`` setting must include
-``airflow.providers.fab.auth_manager.api.auth.backend.basic_auth``.
+with the FAB auth manager they live under /auth/fab/v1.
 
-On Cloud Composer and MWAA the platform's own credentials are reused against
-the auth manager path; whether the FAB API accepts them depends on the
-platform.
+How that API authenticates depends on the FAB provider version:
+
+* FAB provider 3.2+ serves users and roles from FastAPI and authenticates
+  with the same Airflow 3 JWT / bearer token as the core API. This is the
+  default: the operator uses its configured credentials (JWT from
+  /auth/token, static access token, Composer or MWAA) against /auth/fab/v1.
+* Older FAB providers serve them from the legacy Flask API, which only accepts
+  the FAB API auth backends (basic_auth, kerberos_auth, session). Set
+  AIRFLOW_AUTH_MANAGER_BASIC_AUTH=true to use HTTP basic auth with
+  AIRFLOW_USERNAME/AIRFLOW_PASSWORD, and enable the FAB basic_auth backend.
 """
 
 import functools
 import json
+import os
 
 import airflow_client.client as client
 import kopf
@@ -24,14 +27,20 @@ from config.base import (
     AIRFLOW_API_BASE_URL,
     AIRFLOW_AUTH_MANAGER_BASE_URL,
     AIRFLOW_HOST_ROOT,
+    IS_API_V2,
 )
 from config.client import (
+    AIRFLOW_ACCESS_TOKEN,
     AIRFLOW_PASSWORD,
     AIRFLOW_USERNAME,
     USE_AWS_AUTH,
     USE_GOOGLE_AUTH,
+    JwtAuthApiClient,
     api_client,
 )
+
+# Legacy (pre-3.2) FAB providers only accept the FAB API auth backends.
+AIRFLOW_AUTH_MANAGER_BASIC_AUTH = os.getenv("AIRFLOW_AUTH_MANAGER_BASIC_AUTH")
 
 
 def _enabled(flag) -> bool:
@@ -42,9 +51,9 @@ def _enabled(flag) -> bool:
 def get_auth_manager_api_client() -> client.ApiClient:
     """The API client for roles and users, built on first use.
 
-    Raises kopf.PermanentError when the auth manager API needs credentials the
-    operator was not given, so the resource shows a clear phase=Error instead
-    of retrying a request that cannot succeed.
+    Raises kopf.PermanentError when the configured credentials cannot reach
+    the auth manager API, so the resource shows a clear phase=Error instead of
+    retrying a request that cannot succeed.
     """
     base = AIRFLOW_AUTH_MANAGER_BASE_URL.rstrip("/")
     if base == AIRFLOW_API_BASE_URL.rstrip("/"):
@@ -52,6 +61,17 @@ def get_auth_manager_api_client() -> client.ApiClient:
         return api_client
 
     configuration = client.Configuration(host=f"{AIRFLOW_HOST_ROOT}{base}")
+    if _enabled(AIRFLOW_AUTH_MANAGER_BASIC_AUTH):
+        if not (AIRFLOW_USERNAME and AIRFLOW_PASSWORD):
+            raise kopf.PermanentError(
+                "AIRFLOW_AUTH_MANAGER_BASIC_AUTH is set but AIRFLOW_USERNAME "
+                "and AIRFLOW_PASSWORD are not."
+            )
+        configuration.username = AIRFLOW_USERNAME
+        configuration.password = AIRFLOW_PASSWORD
+        return client.ApiClient(configuration=configuration)
+
+    # Same credentials as the core API, against the auth manager base path.
     if _enabled(USE_GOOGLE_AUTH):
         from config.gcp import GoogleAuthApiClient, auth_req, credentials
 
@@ -73,13 +93,22 @@ def get_auth_manager_api_client() -> client.ApiClient:
             api_base_url=base,
         )
     if AIRFLOW_USERNAME and AIRFLOW_PASSWORD:
+        if IS_API_V2:
+            return JwtAuthApiClient(
+                configuration, AIRFLOW_HOST_ROOT, AIRFLOW_USERNAME, AIRFLOW_PASSWORD
+            )
         configuration.username = AIRFLOW_USERNAME
         configuration.password = AIRFLOW_PASSWORD
         return client.ApiClient(configuration=configuration)
+    if AIRFLOW_ACCESS_TOKEN:
+        token_client = client.ApiClient(configuration=configuration)
+        token_client.set_default_header(
+            "Authorization", f"Bearer {AIRFLOW_ACCESS_TOKEN}"
+        )
+        return token_client
     raise kopf.PermanentError(
-        f"Roles and users are served by the auth manager API at {base}, which "
-        "does not accept an access token; set AIRFLOW_USERNAME and "
-        "AIRFLOW_PASSWORD (and enable the FAB basic_auth API backend)."
+        "No credentials are configured for the auth manager API that serves "
+        "roles and users."
     )
 
 
