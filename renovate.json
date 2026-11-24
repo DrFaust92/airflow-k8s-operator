@@ -11,11 +11,11 @@
   },
   "packageRules": [
     {
-      "description": "Hold Python below 3.15 until runtime dependencies (e.g. pyyaml) ship 3.15 wheels; move .python-version and the Dockerfile uv/python base image together",
+      "description": "The runtime image is distroless (gcr.io/distroless/python3-debian13), which ships Debian trixie's Python 3.13; keep .python-version on that minor so CI tests what ships. Lift together with the distroless/Debian base.",
       "matchDepNames": [
         "python"
       ],
-      "allowedVersions": "<3.15"
+      "allowedVersions": "<3.14"
     },
     {
       "description": "apache-airflow-client 3.x targets only the Airflow 3 REST API (/api/v2); 2.x is kept while the operator supports Airflow 2 (/api/v1). Lift when Airflow 2 support is dropped.",
