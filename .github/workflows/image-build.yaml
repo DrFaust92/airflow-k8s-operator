@@ -37,5 +37,5 @@ jobs:
       - name: Smoke test
         run: |
           docker run --rm --entrypoint kopf airflow-k8s-operator:ci --version
-          docker run --rm --entrypoint python airflow-k8s-operator:ci -c "import main"
+          docker run --rm -e AIRFLOW_HOST=http://localhost:8080 --entrypoint python airflow-k8s-operator:ci -c "import main"
           test "$(docker run --rm --entrypoint id airflow-k8s-operator:ci -u)" = "999"
