@@ -38,4 +38,7 @@ jobs:
         run: |
           docker run --rm --entrypoint kopf airflow-k8s-operator:ci --version
           docker run --rm -e AIRFLOW_HOST=http://localhost:8080 -e AIRFLOW_USERNAME=smoke -e AIRFLOW_PASSWORD=smoke --entrypoint python airflow-k8s-operator:ci -c "import main"
-          test "$(docker run --rm --entrypoint id airflow-k8s-operator:ci -u)" = "999"
+          test "$(docker run --rm --entrypoint python airflow-k8s-operator:ci -c 'import os; print(os.getuid())')" = "999"
+          # distroless: no shell or package tooling in the runtime image
+          if docker run --rm --entrypoint sh airflow-k8s-operator:ci -c true; then echo "unexpected shell in runtime image"; exit 1; fi
+          if docker run --rm --entrypoint python airflow-k8s-operator:ci -m pip --version; then echo "unexpected pip in runtime image"; exit 1; fi
