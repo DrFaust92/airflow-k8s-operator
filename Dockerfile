@@ -1,5 +1,10 @@
 # Use a Python image with uv pre-installed
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim@sha256:da0f1f04404173d7d2fa158112e09624d5a80262efa86c89882b68389dfd44eb
+
+# Pick up Debian security fixes published since the base image was built
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 
 # Setup a non-root user
 RUN groupadd --system --gid 999 nonroot \
