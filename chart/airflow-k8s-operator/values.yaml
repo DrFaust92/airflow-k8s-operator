@@ -7,7 +7,7 @@ image:
   pullPolicy: IfNotPresent
   # -- (string) the image tag (overrides chart appVersion)
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "@sha256:4fc74298e52f4d5aa09494fddfe58fd04c00df408f6a682e2cb0be0dacf79b7d"
 
 # -- (int) number of old ReplicaSets to retain to allow rollback
 revisionHistoryLimit: 10
